@@ -7,16 +7,16 @@ from ..main.config import CONFIGDICT
 def setup_pyrcel_lut(pyrcel_lut_path = None):
     """
     Load and initialize pyrcel lookup table based on wspeed_type configuration.
-    
+
     Routes to the appropriate setup function (setup_pyrcel_lut_0/1_2/3_4) based on
     CONFIGDICT['wspeed_type'] and sets global LUT variables.
-    
+
     Args:
         pyrcel_lut_path: str - Path to pyrcel LUT netcdf/zarr file
-    
+
     Raises:
         ValueError: If wspeed_type is not in [0,1,2,3,4]
-    
+
     Side Effects:
         - Sets global PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, AERONAMEMAP, THISRECIPE
     """
@@ -35,14 +35,14 @@ def setup_pyrcel_lut(pyrcel_lut_path = None):
 def finalize_pyrcel_lut_setup(pyrcellut : xr.Dataset, ccn_densities, ccn_mact, recipe_file_path, include_w : list = []):
     """
     Common finalization for all pyrcel LUT setup variants (wspeed_type 0,1,2,3,4).
-    
+
     Args:
         pyrcellut: xarray Dataset - The loaded pyrcel lookup table
         ccn_densities: list - CCN species densities (kg/m^3)
         ccn_mact: list - CCN mass activation thresholds
         recipe_file_path: str - Path to CCN recipe JSON file
     """
-    
+
     pyrcellut = pyrcellut.sortby("spec_num")
     aeronames = pyrcellut["name"].values
     aeroidxs = pyrcellut.spec_num.values
@@ -50,7 +50,7 @@ def finalize_pyrcel_lut_setup(pyrcellut : xr.Dataset, ccn_densities, ccn_mact, r
     pyrcnamemap = {v: k for k, v in aeronamemap.items()}
 
     dim_order = ["spec_num"]+include_w+[f"aero{i}" for i in aeroidxs]
-    
+
     if len(aeronames) != len(ccn_densities):
         raise ValueError("ccn_densities should be the same number of pyrcel LUT species!"+
                         f"got instead ccn_densities ({len(ccn_densities)}), "+
@@ -92,32 +92,32 @@ def finalize_pyrcel_lut_setup(pyrcellut : xr.Dataset, ccn_densities, ccn_mact, r
     cfg.PYRCNAMEMAP = pyrcnamemap
     cfg.AERONAMEMAP = aeronamemap
     cfg.THISRECIPE = thisrecipe
-    
+
 
 
 def setup_pyrcel_lut_0(pyrcel_lut_path):
     """
     Setup pyrcel LUT for wspeed_type 0 (monodisperse vertical velocity).
-    
+
     Loads LUT with fixed vertical velocity (no w_prime or w_mean), interpolates
     to configured speed, and prepares for CCN calculations.
-    
+
     Args:
         pyrcel_lut_path: str - Path to pyrcel LUT netcdf/zarr file
-    
+
     Raises:
         ValueError: If wspeed is outside LUT bounds
-    
+
     Side Effects:
         Sets global PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, AERONAMEMAP, THISRECIPE
     """
-    
+
     print(f"Opening LUT from {pyrcel_lut_path}")
     pyrcellut = xr.open_dataset(pyrcel_lut_path)
 
     if (CONFIGDICT["wspeed"] < pyrcellut.w.values.min()) or (CONFIGDICT["wspeed"] > pyrcellut.w.values.max()):
         raise ValueError(f"vertical speed {CONFIGDICT['wspeed']} m/s out of bounds for Pyrcel LUT!")
-    
+
     print(f"Linearly interpolating Pyrcel LUT for vertical speed {CONFIGDICT['wspeed']} m/s")
     pyrcellut = pyrcellut.interp(w=CONFIGDICT["wspeed"], method="linear").compute()
 
@@ -132,31 +132,31 @@ def setup_pyrcel_lut_0(pyrcel_lut_path):
 def setup_pyrcel_lut_1_2(pyrcel_lut_path):
     """
     Setup pyrcel LUT for wspeed_type 1 or 2 (w_mean and w_prime).
-    
+
     Loads LUT with both mean and turbulent vertical velocity, interpolates
     w_prime to configured value, and prepares for CCN calculations.
-    
+
     Args:
         pyrcel_lut_path: str - Path to pyrcel LUT netcdf/zarr file
-    
+
     Raises:
         ValueError: If w_prime is outside LUT bounds
-    
+
     Side Effects:
         Sets global PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, AERONAMEMAP, THISRECIPE
     """
-    
+
     print(f"Opening LUT from {pyrcel_lut_path}")
     pyrcellut = xr.open_dataset(pyrcel_lut_path)
 
     if (CONFIGDICT["w_prime"] < pyrcellut.w_prime.values.min()) or (CONFIGDICT["w_prime"] > pyrcellut.w_prime.values.max()):
         raise ValueError(f"w_prime {CONFIGDICT['w_prime']} m/s out of bounds for Pyrcel LUT!")
-    
+
     print(f"Linearly interpolating Pyrcel LUT for fixed w_prime {CONFIGDICT['w_prime']} m/s")
     pyrcellut = pyrcellut.interp(w_prime=CONFIGDICT["w_prime"], method="linear").compute()
 
     finalize_pyrcel_lut_setup(
-        pyrcellut, 
+        pyrcellut,
         CONFIGDICT["ccn_densities"], CONFIGDICT["ccn_mact_def"],
         CONFIGDICT["ccn_recipe_file"], ["w_mean"])
 
@@ -164,17 +164,17 @@ def setup_pyrcel_lut_1_2(pyrcel_lut_path):
 def setup_pyrcel_lut_3_4(pyrcel_lut_path):
     """
     Setup pyrcel LUT for wspeed_type 3 or 4 (w_mean and w_prime with Deardorff scaling).
-    
+
     Loads LUT with both mean and turbulent vertical velocity, applies Deardorff scaling
     based on cloud base height, and prepares for CCN calculations.
-    
+
     Args:
         pyrcel_lut_path: str - Path to pyrcel LUT netcdf/zarr file
-    
+
     Side Effects:
         Sets global PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, AERONAMEMAP, THISRECIPE
     """
-    
+
     print(f"Opening LUT from {pyrcel_lut_path}")
     pyrcellut = xr.open_dataset(pyrcel_lut_path)
 
@@ -191,7 +191,7 @@ def setup_pyrcel_lut_3_4(pyrcel_lut_path):
 def get_actual_lut_recipes(represented_aeros):
     """
     Adjust LUT recipe to include only represented aerosol species
-    
+
     Args:
         represented_aeros: - Iterable containing names of represented aerosols
 
@@ -199,7 +199,7 @@ def get_actual_lut_recipes(represented_aeros):
         actual_pyrcellut, actual_recipe, needed_aeros
     """
     from ..main.config import THISRECIPE, PYRCNAMEMAP, PYRCELLUT
-    
+
     var_to_keep = ["pressure"]
     actual_recipe = {}
     print("Computing CCN species:", flush=True)

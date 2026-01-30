@@ -37,7 +37,7 @@ def interp_vertical(psrc, ptgt, chunk_size_max=1000):
 
 
     outshape = (ncom,nsrc,ntgt,nlevtgt)
-    
+
     tgtlevs = np.zeros(outshape, dtype=c_int)
     weights = np.zeros(outshape, dtype=c_real)
 
@@ -54,7 +54,7 @@ def interp_vertical(psrc, ptgt, chunk_size_max=1000):
         c_int(nlevsrc), c_int(nlevtgt), c_int(chunk_size_max)
         )
     del psrc_cont, ptgt_cont
-    
+
     return tgtlevs, weights
 
 def interp_fld_vertical(fsrc, tgtlevs, weights, chunk_size_max=1000):
@@ -68,7 +68,7 @@ def interp_fld_vertical(fsrc, tgtlevs, weights, chunk_size_max=1000):
         fdst(ncom,nsrc,ntgt,nlevtgt)
     """
     ncom,nsrc,nlevsrc = fsrc.shape
-    
+
     ncom2,ntgt,nlevtgt   = tgtlevs.shape
     ncom3,ntgt2,nlevtgt2 = weights.shape
 
@@ -107,14 +107,14 @@ def interpolate_monthly_clim(dset,
                              dates : xr.DataArray):
     """
     Perform time interpolation for monthly climatology
-    
+
     Args:
         dset: xr.Dataset or xr.DataArray - containing "month" dimension
         dates: xr.DataArray - dates to which interpolate
     Returns:
         interpolated: same type as dset
     """
-        
+
     prev_month     = (dates.values - np.timedelta64(14,'D')).astype("datetime64[M]")+ np.timedelta64(14,'D')
     foll_month     = (prev_month + np.timedelta64(18,'D')).astype("datetime64[M]") + np.timedelta64(14,'D')
 

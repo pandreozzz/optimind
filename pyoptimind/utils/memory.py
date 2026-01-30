@@ -8,10 +8,10 @@ from contextlib import contextmanager
 def trim_memory() -> int:
     """
     Trigger memory compaction for the C library malloc.
-    
+
     Calls libc.malloc_trim(0) to release memory back to the OS that is not being used.
     This helps reduce memory fragmentation and improve memory efficiency.
-    
+
     Returns:
         int: Amount of memory released (may vary by system)
     """
@@ -24,11 +24,11 @@ def trim_memory() -> int:
 def memory_cleanup():
     """
     Context manager for automatic garbage collection and memory trimming.
-    
+
     Ensures garbage collection and malloc_trim are called on context exit,
     regardless of whether an exception occurred. Useful for freeing memory
     after processing large datasets.
-    
+
     Usage:
         with memory_cleanup():
             # process data
@@ -44,7 +44,7 @@ def memory_cleanup():
 def get_available_memory() -> float:
     """
     Return available system memory in MB.
-    
+
     Returns:
         float: Available memory in megabytes
     """
@@ -55,7 +55,7 @@ def get_available_memory() -> float:
 def get_memory_usage() -> dict:
     """
     Return detailed system memory usage statistics.
-    
+
     Returns:
         dict: Dictionary with keys:
             - total_mb: Total system memory in MB
@@ -75,10 +75,10 @@ def get_memory_usage() -> dict:
 def print_memory_status(label: str = ""):
     """
     Print current memory usage statistics to stdout.
-    
+
     Displays a formatted line with memory usage information useful for
     monitoring memory consumption during data processing.
-    
+
     Args:
         label: Optional label to identify the checkpoint (e.g., "After loading data")
     """

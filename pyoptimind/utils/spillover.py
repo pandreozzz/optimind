@@ -7,11 +7,11 @@ from ..main.config import CONFIGDICT
 def get_spill_directory() -> str:
     """
     Get or create the dask spillover directory.
-    
+
     Retrieves the spillover directory path from CONFIGDICT['dask_spill_dir'].
     If not configured, defaults to $TMPDIR/dask-spillover. Creates the
     directory if it doesn't exist.
-    
+
     Returns:
         str: Path to the spillover directory
     """
@@ -26,7 +26,7 @@ def get_spill_directory() -> str:
 def get_spill_usage() -> dict:
     """
     Get disk usage statistics for the spillover directory.
-    
+
     Returns:
         dict: Dictionary with spillover disk usage including:
             - spill_dir: Path to spillover directory
@@ -54,10 +54,10 @@ def get_spill_usage() -> dict:
 def print_spill_status(label: str = ""):
     """
     Print current spillover disk usage statistics to stdout.
-    
+
     Displays formatted spillover disk usage for monitoring disk pressure
     during large dataset processing with dask spillover.
-    
+
     Args:
         label: Optional checkpoint label (e.g., "After aerosol load")
     """

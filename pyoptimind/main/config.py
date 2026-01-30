@@ -118,17 +118,17 @@ SSRH80 = True
 def digest_config(config_path: str):
     """
     Load and validate configuration from JSON file.
-    
+
     Reads a JSON configuration file and merges settings with CONFIGDICT,
     validating that all config keys exist in defaults. Prints status of
     each configuration option.
-    
+
     Args:
         config_path: str - Path to configuration JSON file
-    
+
     Raises:
         ValueError: If a config key is unknown (not in default CONFIGDICT)
-    
+
     Side Effects:
         - Modifies global CONFIGDICT
         - Modifies global SOME_AEROS_OUT_OF_CLOUD

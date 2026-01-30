@@ -70,33 +70,33 @@ def get_tuning_params(actual_recipe):
 def run_tuning_year(year: int, config_path: str, logdir_path: str):
     """
     Execute full year tuning workflow.
-    
+
     Args:
         year: Year to process
         config_path: Path to configuration JSON
         logdir_path: Path to logs directory
     """
     logger.info(f"Starting LUT tuning for year {year}")
-    
+
     # Initialize
 
     logger.info(f"Setting up pyrcel LUT from {CONFIGDICT['pyrcellutpath']}")
     setup_pyrcel_lut(CONFIGDICT["pyrcellutpath"])
-    
+
     print_memory_status("After LUT setup")
     print_spill_status("After LUT setup")
-    
+
     # Stage data files
     logger.info(f"Staging data files for {year}")
     copy_all_files(year)
-    
+
     print("Loading MODIS Nd data...", flush=True)
     this_modis_nd13, this_modis_nd13_errors = get_modis_errors(get_modis_data(year))
     this_modis_nd13 = this_modis_nd13.rename("modis_nd13")
     this_modis_nd13_errors = this_modis_nd13_errors.rename("modis_nd13_errors")
     print(this_modis_nd13.__str__())
     print(this_modis_nd13_errors.__str__(), flush=True)
-    
+
     start_time = time.time()
     print("Getting era5 cloudy points...", flush=True)
     this_ifs, this_ifs_fixedlevel = get_meteo_cloudy_slices(
@@ -125,7 +125,7 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str):
 
     # Align recipes and aerosol fields
     actual_pyrcellut, actual_recipe, needed_aeros = get_actual_lut_recipes(list(this_aero.variables))
-    
+
     #list(actual_recipe.keys())
     species_to_tune, ini_radii, firstguess_radii = get_tuning_params(actual_recipe)
 

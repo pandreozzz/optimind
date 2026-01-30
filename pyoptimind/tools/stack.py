@@ -17,20 +17,20 @@ def tools_to_stack_xarrays(src_arr, dst_arr, intp_dim_name):
     unique_dim_names = list(set(nonintp_dims_src) ^ set(nonintp_dims_dst))
     onlysrc_dim_names = [d for d in nonintp_dims_src if d in unique_dim_names]
     onlydst_dim_names = [d for d in nonintp_dims_dst if d in unique_dim_names]
-    
+
     src_dim_order = common_dim_names+onlysrc_dim_names
     dst_dim_order = common_dim_names+onlydst_dim_names
     if intp_dim_name:
         src_dim_order = src_dim_order+[intp_dim_name]
         dst_dim_order = dst_dim_order+[intp_dim_name]
-    
+
     com_ndims = [len(src_arr[com_dim]) for com_dim in common_dim_names]
     src_ndims = [len(src_arr[src_dim]) for src_dim in onlysrc_dim_names]
     src_intp_ndims = [len(src_arr[intp_dim_name])] if intp_dim_name in src_arr.dims else []
-    
+
     dst_ndims = [len(dst_arr[dst_dim]) for dst_dim in onlydst_dim_names]
     dst_intp_ndims = [len(dst_arr[intp_dim_name])] if intp_dim_name in dst_arr.dims else []
-    
+
     src_stackshape = tuple([int(np.array(ndims).prod()) if len(ndims) > 0 else 1 for ndims in [com_ndims, src_ndims, src_intp_ndims] ])
     dst_stackshape = tuple([int(np.array(ndims).prod()) if len(ndims) > 0 else 1 for ndims in [com_ndims, dst_ndims, dst_intp_ndims]])
 
@@ -50,7 +50,7 @@ def tools_to_stack_xarrays(src_arr, dst_arr, intp_dim_name):
     }
     if intp_dim_name:
         out_coords[intp_dim_name] = dst_arr.coords[intp_dim_name]
-    
+
     arglist = [src_dim_order, dst_dim_order, out_dim_order]+\
     [src_stackshape, dst_stackshape, out_coords, out_shape]
 
@@ -67,7 +67,7 @@ def get_stacked_aero(fld, this_lutaero, include_w : list = [],
     # ensure dim order
     varlist = [v.name for v in this_lutaero
                if v.name in list(fld.data_vars)]
-    
+
     if varlist == []:
         print(varlist)
         print(this_lutaero)
@@ -91,7 +91,7 @@ def get_stacked_aero(fld, this_lutaero, include_w : list = [],
     w_fld_ordered = np.ascontiguousarray(np.concatenate(
         [fld[var].transpose(*dimorder).values.flatten(order=flat_order)[:,None]
          for var in include_w], axis=-1)) if len(include_w) > 0 else None
-    
+
     coords = {d: fld.coords[d] for d in dimorder if d in fld.coords}
 
     return StackAeroTuple(fld_ordered, w_fld_ordered, varlist, include_w, dimorder,

@@ -28,7 +28,7 @@ def nd_err_func(inpars, lut_species_stack, modis_nd13, pyrcel_lut_stack,
     if tune_rain_dispersion and (rainratio is None):
         raise ValueError("Rain ratio required if tuning also rain dispersion!!!!!")
     else:
-        rainratio = None 
+        rainratio = None
 
     r0 = inpars[:-1] if tune_rain_dispersion else inpars
 
@@ -179,7 +179,7 @@ def tuning_loop(this_ccn_mcon, ini_radii, firstguess_radii,
     _,tun_nd13,_ = nd_err_func(res.x, this_ccn_mcon_stack,
                                this_modis_nd13, pyrcel_lut_stack,
                                scale_mcon=CONFIGDICT["scalemcon"],
-                               species_to_tune=species_to_tune, bind_seasalt_ratio=bind_seasalt_ratio, 
+                               species_to_tune=species_to_tune, bind_seasalt_ratio=bind_seasalt_ratio,
                                modis_errors=this_modis_errors, timedim=timedim,
                                reduce_to_monthly=True, return_data_and_scalers=True,
                                monthly_weights=monthly_weights,

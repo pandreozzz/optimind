@@ -129,7 +129,7 @@ def compute_nd(lut_species_mcon_stack : StackAeroTuple,
         f_lib.get_flexi_lutvals.argtypes = [c_real_ptr]+[c_int]*6+\
         [c_real_ptr]*2+[c_int_ptr, c_real_ptr] +\
         [c_real_ptr]*2+[c_int_ptr]+[c_int, c_bool]
-        
+
         f_lib.get_flexi_lutvals(
             lut_maps.astype(c_real),
             c_int(nmaps), c_int(map_size),
@@ -182,7 +182,7 @@ def compute_nd(lut_species_mcon_stack : StackAeroTuple,
         for v,var in enumerate(lut_species_mcon_stack.varlist)
         if var not in ["w_mean", "w_prime"]
     ]
-    
+
     with mp.Pool(len(arglist)) as p:
         all_nds = p.map(get_tot_nd, arglist)
     tot_nd = np.zeros_like(val_out_data[:,0])
