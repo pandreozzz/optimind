@@ -3,15 +3,6 @@
 
 *__pycache__
 
-logs/*
-
-data/cams/*
-data/cams_clim/*
-data/era5/*
-data/modis/*
-data/pyrcellut/*
-
-workdir/*
 
 .DS_Store
 
