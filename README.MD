@@ -1,5 +1,5 @@
-# Optimind
-Optimind: An Open-Source Atmospheric Optimization Framework
+# OptimiNd
+OptimiNd: An Open-Source Atmospheric Optimization Framework
 ===============================================================================
 Setup Instructions
 ======================
