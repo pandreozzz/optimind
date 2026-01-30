@@ -8,6 +8,9 @@ from typing import Dict, Optional, Tuple, Union
 import numpy as np
 import xarray as xr
 
+from scipy.integrate import quad
+from scipy.special import erf
+
 __all__ = [
     "IFSAeroSpecs",
     "preprocess_params",
@@ -183,14 +186,13 @@ def lognorm_cdf(
     mode_factors_in: Optional[Union[float, np.ndarray]] = None
     ) -> np.ndarray:
     """CDF of the normalized lognormal PDF."""
-    from scipy.special import erf  # local import to keep module light
 
     r_med, shape, mode_factors = preprocess_params(r_med_in, shape_in, mode_factors_in)
 
     x = np.array(x_in, dtype=float)
     si = np.log(shape)
 
-    if x.shape != () and x.size > 1:
+    if x.shape and x.size > 1:
         x = x[None, :]
         r_med = r_med[:, None]
         si = si[:, None]
@@ -206,7 +208,6 @@ def lognorm_x3_cdf(
     mode_factors: Optional[np.ndarray] = None
     ) -> np.ndarray:
     """Integral of x^3 * n(x) from 0 to x, where n(x) is the normalized lognormal PDF."""
-    from scipy.integrate import quad  # local import
 
     def _integral(xsup: float) -> float:
         return quad(lognorm_x3_pdf, 0.0, xsup, args=(r_med, shape, mode_factors))[0]
