@@ -11,9 +11,6 @@ data/era5/*
 data/modis/*
 data/pyrcellut/*
 
-./setup_files/config/*
-./setup_files/recipes/*
-
 workdir/*
 
 .DS_Store
