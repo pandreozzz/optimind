@@ -1,0 +1,35 @@
+{
+  "gridspec": "r90",
+  "deardorff_scale" : 0.4,
+  "wspeed_type": 3,
+  "kinetically_limited": false,
+  "localhour_minmax" : [9,16],
+  "hourly" : "3hourly",
+  "aerofromclimatology" : false,
+  "fixedaeromodellevel" : null,
+  "nlevelsbelowcloudbase" : null,
+  "aeros_out_of_cloud" : null,
+  "other_fixedaeromodellevel" : [135, 129, null],
+  "aerosolclimfile" : "/home/papa/data/aerosol_cams_climatology_49r1camsround3_3D_no_compression_classic.nc",
+  "other_aerosolclimfile" : [
+    "/home/papa/data/aerosol_cams_climatology_43r3_v2_3D_no_compression_classic.nc",
+    "/home/papa/data/aerosol_cams_climatology_49r2_1951-2019_4D.nc",
+    "/home/papa/data/aerosol_cams_climatology_49r1camsround3_3D_no_compression_classic.nc"
+  ],
+  "pyrcellutpath" : "/home/papa/Documents/parapyrcel/outdir_luts/init_6specs_01su_wdiags_jsontemplate.txt/init_6specs_01su_wdiags_merged_wmeansym_wprime.nc",
+  "other_pyrcellutpath" : [
+    "/home/papa/Documents/parapyrcel/outdir_luts/lut_sepcarb_sepni_1w_q06withscaling_tunv2.nc"
+  ],
+  "wspeed" : null,
+  "scalemcon" : false,
+  "scale_recipe_ingredient": null,
+  "bindseasalt" : true,
+  "modisndrefsample" : "Q06",
+  "modisndvalidthr" : 0.01,
+  "samplespreads" : ["Q06", "G18", "BR17"],
+  "modisndbiascorrection" : true,
+  "useverheggenactivfrac" : false,
+  "thresh_valid_monthly" : 0.05,
+  "weightbycloudpresence" : false,
+  "ccn_recipe_file" : "/home/papa/Documents/optimise_49r2_nd/tunings/setup_files/recipe_02.json"
+}

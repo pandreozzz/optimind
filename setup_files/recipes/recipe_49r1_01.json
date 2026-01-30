@@ -1,0 +1,25 @@
+{
+    "aero1": {
+      "Sulfates" : 1
+    },
+    "aero2": {
+      "Ammonium" : 1,
+      "Nitrate_fine" : 0.62
+    },
+    "aero3": {
+      "Sea_Salt_bin1" : 1,
+      "Sea_Salt_bin2" : 0.05
+    },
+    "aero4": {
+      "Sea_Salt_bin2" : 0.95,
+      "Sea_Salt_bin3" : 1.0
+    },
+    "aero5": {
+      "Organic_Matter_hydrophilic" : 1,
+      "Biogenic_Secondary_Organic" : 0.7,
+      "Anthropogenic_Secondary_Organic" : 0.7
+    },
+    "aero6": {
+      "Black_Carbon_hydrophilic" : 1
+    }
+}
