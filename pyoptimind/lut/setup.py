@@ -1,231 +1,291 @@
+"""Setup and selection utilities for the Pyrcel LUT and CCN recipes."""
+
+from __future__ import annotations
+
+from typing import Dict, Iterable, List, Tuple
+
 import json
 import numpy as np
 import xarray as xr
-from ..tools.aerosol import IFSAeroSpecs
+
 from ..main.config import CONFIGDICT
+# Set global state
+from ..main import config  # local import to avoid circulars at import time
+from ..tools.aerosol import IFSAeroSpecs
 
-def setup_pyrcel_lut(pyrcel_lut_path = None):
+
+def setup_pyrcel_lut(pyrcel_lut_path: str = "") -> None:
     """
-    Load and initialize pyrcel lookup table based on wspeed_type configuration.
+    Load and initialize the Pyrcel lookup table based on `wspeed_type`.
 
-    Routes to the appropriate setup function (setup_pyrcel_lut_0/1_2/3_4) based on
-    CONFIGDICT['wspeed_type'] and sets global LUT variables.
+    Dispatches to one of: `setup_pyrcel_lut_0`, `setup_pyrcel_lut_1_2`, or
+    `setup_pyrcel_lut_3_4`, then stores global state into `..main.config`.
 
-    Args:
-        pyrcel_lut_path: str - Path to pyrcel LUT netcdf/zarr file
+    Parameters
+    ----------
+    pyrcel_lut_path : str
+        Path to the Pyrcel LUT NetCDF/Zarr. If empty, uses
+        `CONFIGDICT["pyrcellutpath"]`.
 
-    Raises:
-        ValueError: If wspeed_type is not in [0,1,2,3,4]
-
-    Side Effects:
-        - Sets global PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, AERONAMEMAP, THISRECIPE
+    Raises
+    ------
+    ValueError
+        If `wspeed_type` is not in {0, 1, 2, 3, 4}.
     """
+    if pyrcel_lut_path == "":
+        # Original code had CONFIGDICT["pyrce"]; assuming intended key:
+        pyrcel_lut_path = CONFIGDICT["pyrcellutpath"]
 
-    if pyrcel_lut_path is None:
-        pyrcel_lut_path = CONFIGDICT["pyrce"]
-    if CONFIGDICT["wspeed_type"] == 0:
+    wtype = CONFIGDICT["wspeed_type"]
+    if wtype == 0:
         setup_pyrcel_lut_0(pyrcel_lut_path)
-    elif CONFIGDICT["wspeed_type"] in [1, 2]:
+    elif wtype in [1, 2]:
         setup_pyrcel_lut_1_2(pyrcel_lut_path)
-    elif CONFIGDICT["wspeed_type"] in [3, 4]:
+    elif wtype in [3, 4]:
         setup_pyrcel_lut_3_4(pyrcel_lut_path)
     else:
-        raise ValueError(f"Could not setup Pyrcel lut. Unrecognized wspeed_type {CONFIGDICT['wspeed_type']}")
+        raise ValueError(f"Unrecognized wspeed_type {wtype}; expected one of [0, 1, 2, 3, 4].")
 
-def finalize_pyrcel_lut_setup(pyrcellut : xr.Dataset, ccn_densities, ccn_mact, recipe_file_path, include_w : list = []):
+
+def finalize_pyrcel_lut_setup(
+    pyrcellut: xr.Dataset,
+    ccn_densities: List[float],
+    ccn_mact: List[float],
+    recipe_file_path: str,
+    include_w: List[str] | None = None,
+) -> None:
     """
-    Common finalization for all pyrcel LUT setup variants (wspeed_type 0,1,2,3,4).
+    Common finalization for all Pyrcel LUT setup variants.
 
-    Args:
-        pyrcellut: xarray Dataset - The loaded pyrcel lookup table
-        ccn_densities: list - CCN species densities (kg/m^3)
-        ccn_mact: list - CCN mass activation thresholds
-        recipe_file_path: str - Path to CCN recipe JSON file
+    Parameters
+    ----------
+    pyrcellut : xr.Dataset
+        Loaded (and potentially speed-interpolated) Pyrcel LUT.
+    ccn_densities : list of float
+        CCN species densities [kg m^-3], same length/order as LUT species.
+    ccn_mact : list of float
+        CCN mass activation thresholds (per species).
+    recipe_file_path : str
+        JSON file path containing CCN recipes keyed by "aero{spec_num}".
+    include_w : list[str] | None
+        Additional velocity coordinates to keep in dim order (e.g., ["w_mean", "w_prime"]).
     """
+    include_w = include_w or []
 
+    # Ensure a stable species order
     pyrcellut = pyrcellut.sortby("spec_num")
+
     aeronames = pyrcellut["name"].values
     aeroidxs = pyrcellut.spec_num.values
-    aeronamemap = {f"aero{spn}": str(pyrcellut.name.sel(spec_num=spn).item()) for spn in aeroidxs}
-    pyrcnamemap = {v: k for k, v in aeronamemap.items()}
 
-    dim_order = ["spec_num"]+include_w+[f"aero{i}" for i in aeroidxs]
+    aeronamemap: Dict[str, str] = {
+        f"aero{spn}": str(pyrcellut.name.sel(spec_num=spn).item()) for spn in aeroidxs
+    }
+    pyrcnamemap: Dict[str, str] = {v: k for k, v in aeronamemap.items()}
 
+    # Validate lengths
     if len(aeronames) != len(ccn_densities):
-        raise ValueError("ccn_densities should be the same number of pyrcel LUT species!"+
-                        f"got instead ccn_densities ({len(ccn_densities)}), "+
-                        f"aeronames ({len(aeronames)})")
+        raise ValueError(
+            "ccn_densities length must match number of Pyrcel LUT species; "
+            f"got {len(ccn_densities)} vs {len(aeronames)}."
+        )
     if len(aeronames) != len(ccn_mact):
-        raise ValueError("ccn_mact should be the same number of pyrcel LUT species!"+
-                        f"got instead ccn_mact ({len(ccn_mact)}), "+
-                        f"aeronames ({len(aeronames)})")
+        raise ValueError(
+            "ccn_mact length must match number of Pyrcel LUT species; "
+            f"got {len(ccn_mact)} vs {len(aeronames)}."
+        )
 
+    # Build IFSAeroSpecs list in LUT order
     thislutaero = [
-        IFSAeroSpecs(name,
-                  rmed, shape,
-                  dens, 0, np.inf, np.array(1.), mact, 1)
+        IFSAeroSpecs(
+            name,
+            rmed,
+            shape,
+            dens,
+            0.0,
+            float(np.inf),
+            np.array(1.0),
+            mact,
+            1,
+        )
         for name, rmed, shape, dens, mact in zip(
-            aeronames, pyrcellut["r_median"].values, pyrcellut["shape"].values,
-            ccn_densities, ccn_mact, strict=True)]
+            aeronames, pyrcellut["r_median"].values,
+            pyrcellut["shape"].values, ccn_densities, ccn_mact
+        )
+    ]
 
-    pyrcellut = pyrcellut.assign_coords({f"aero{aerox}": pyrcellut[f"aero{aerox}_nccn"] for aerox in aeroidxs})
+    # Add 1-D coordinate aliases `aero{spec}` pointing to the CCN bins for convenience
+    pyrcellut = pyrcellut.assign_coords(
+        {f"aero{aerox}": pyrcellut[f"aero{aerox}_nccn"] for aerox in aeroidxs}
+    )
 
-
-    with open(recipe_file_path, 'r') as recipe_file:
+    # Load recipes from JSON file
+    with open(recipe_file_path, "r", encoding="utf-8") as recipe_file:
         ccn_recipes = json.load(recipe_file)
-    thisrecipe = {}
+
+    thisrecipe: Dict[str, Dict[str, float]] = {}
     print("Populating recipes...")
     for ccn_idx in aeroidxs:
         ccn_aero = f"aero{ccn_idx}"
         if ccn_aero not in ccn_recipes:
             raise ValueError(
-                f"ccn name {ccn_aero} from LUT" +\
-                f"was not found in recipe file {recipe_file}"
+                f"CCN name {ccn_aero} from LUT was not found in recipe file {recipe_file_path}"
             )
         print(f"Adding {aeronamemap[ccn_aero]}...")
         thisrecipe[aeronamemap[ccn_aero]] = ccn_recipes[ccn_aero]
 
-    # Set global state
-    from ..main import config as cfg
-    cfg.PYRCELLUT = pyrcellut
-    cfg.THISLUTAERO = thislutaero
-    cfg.PYRCNAMEMAP = pyrcnamemap
-    cfg.AERONAMEMAP = aeronamemap
-    cfg.THISRECIPE = thisrecipe
+    config.PYRCELLUT = pyrcellut
+    config.THISLUTAERO = thislutaero
+    config.PYRCNAMEMAP = pyrcnamemap
+    config.AERONAMEMAP = aeronamemap
+    config.THISRECIPE = thisrecipe
 
 
-
-def setup_pyrcel_lut_0(pyrcel_lut_path):
+def setup_pyrcel_lut_0(pyrcel_lut_path: str) -> None:
     """
-    Setup pyrcel LUT for wspeed_type 0 (monodisperse vertical velocity).
+    Setup Pyrcel LUT for wspeed_type 0 (monodisperse vertical velocity).
 
-    Loads LUT with fixed vertical velocity (no w_prime or w_mean), interpolates
-    to configured speed, and prepares for CCN calculations.
+    Loads the LUT, verifies that `CONFIGDICT["wspeed"]` is within bounds,
+    linearly interpolates over `w`, and finalizes globals.
 
-    Args:
-        pyrcel_lut_path: str - Path to pyrcel LUT netcdf/zarr file
+    Parameters
+    ----------
+    pyrcel_lut_path : str
+        LUT path (NetCDF/Zarr).
 
-    Raises:
-        ValueError: If wspeed is outside LUT bounds
-
-    Side Effects:
-        Sets global PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, AERONAMEMAP, THISRECIPE
+    Raises
+    ------
+    ValueError
+        If `CONFIGDICT["wspeed"]` is out of LUT `w` range.
     """
-
     print(f"Opening LUT from {pyrcel_lut_path}")
     pyrcellut = xr.open_dataset(pyrcel_lut_path)
 
-    if (CONFIGDICT["wspeed"] < pyrcellut.w.values.min()) or (CONFIGDICT["wspeed"] > pyrcellut.w.values.max()):
-        raise ValueError(f"vertical speed {CONFIGDICT['wspeed']} m/s out of bounds for Pyrcel LUT!")
+    if (CONFIGDICT["wspeed"] < pyrcellut.w.values.min()) or (
+        CONFIGDICT["wspeed"] > pyrcellut.w.values.max()
+    ):
+        raise ValueError(
+            f'vertical speed {CONFIGDICT["wspeed"]} m/s out of bounds for Pyrcel LUT!'
+        )
 
-    print(f"Linearly interpolating Pyrcel LUT for vertical speed {CONFIGDICT['wspeed']} m/s")
+    print(f'Linearly interpolating Pyrcel LUT for vertical speed {CONFIGDICT["wspeed"]} m/s')
     pyrcellut = pyrcellut.interp(w=CONFIGDICT["wspeed"], method="linear").compute()
 
-
     include_w = ["w"] if pyrcellut.w.shape != () else []
-
     finalize_pyrcel_lut_setup(
         pyrcellut,
-        CONFIGDICT["ccn_densities"], CONFIGDICT["ccn_mact_def"],
-        CONFIGDICT["ccn_recipe_file"], include_w)
+        CONFIGDICT["ccn_densities"],
+        CONFIGDICT["ccn_mact_def"],
+        CONFIGDICT["ccn_recipe_file"],
+        include_w,
+    )
 
-def setup_pyrcel_lut_1_2(pyrcel_lut_path):
+
+def setup_pyrcel_lut_1_2(pyrcel_lut_path: str) -> None:
     """
-    Setup pyrcel LUT for wspeed_type 1 or 2 (w_mean and w_prime).
+    Setup Pyrcel LUT for wspeed_type 1 or 2 (w_mean only, or w_mean + tendency).
 
-    Loads LUT with both mean and turbulent vertical velocity, interpolates
-    w_prime to configured value, and prepares for CCN calculations.
-
-    Args:
-        pyrcel_lut_path: str - Path to pyrcel LUT netcdf/zarr file
-
-    Raises:
-        ValueError: If w_prime is outside LUT bounds
-
-    Side Effects:
-        Sets global PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, AERONAMEMAP, THISRECIPE
+    Loads the LUT, verifies that `CONFIGDICT["w_prime"]` is within bounds,
+    linearly interpolates over `w_prime`, and finalizes globals.
     """
-
     print(f"Opening LUT from {pyrcel_lut_path}")
     pyrcellut = xr.open_dataset(pyrcel_lut_path)
 
-    if (CONFIGDICT["w_prime"] < pyrcellut.w_prime.values.min()) or (CONFIGDICT["w_prime"] > pyrcellut.w_prime.values.max()):
-        raise ValueError(f"w_prime {CONFIGDICT['w_prime']} m/s out of bounds for Pyrcel LUT!")
+    if (CONFIGDICT["w_prime"] < pyrcellut.w_prime.values.min()) or (
+        CONFIGDICT["w_prime"] > pyrcellut.w_prime.values.max()
+    ):
+        raise ValueError(
+            f'w_prime {CONFIGDICT["w_prime"]} m/s out of bounds for Pyrcel LUT!'
+        )
 
-    print(f"Linearly interpolating Pyrcel LUT for fixed w_prime {CONFIGDICT['w_prime']} m/s")
+    print(f'Linearly interpolating Pyrcel LUT for fixed w_prime {CONFIGDICT["w_prime"]} m/s')
     pyrcellut = pyrcellut.interp(w_prime=CONFIGDICT["w_prime"], method="linear").compute()
 
     finalize_pyrcel_lut_setup(
         pyrcellut,
-        CONFIGDICT["ccn_densities"], CONFIGDICT["ccn_mact_def"],
-        CONFIGDICT["ccn_recipe_file"], ["w_mean"])
+        CONFIGDICT["ccn_densities"],
+        CONFIGDICT["ccn_mact_def"],
+        CONFIGDICT["ccn_recipe_file"],
+        ["w_mean"],
+    )
 
 
-def setup_pyrcel_lut_3_4(pyrcel_lut_path):
+def setup_pyrcel_lut_3_4(pyrcel_lut_path: str) -> None:
     """
-    Setup pyrcel LUT for wspeed_type 3 or 4 (w_mean and w_prime with Deardorff scaling).
+    Setup Pyrcel LUT for wspeed_type 3 or 4 (w_mean and w_prime with Deardorff scaling).
 
-    Loads LUT with both mean and turbulent vertical velocity, applies Deardorff scaling
-    based on cloud base height, and prepares for CCN calculations.
-
-    Args:
-        pyrcel_lut_path: str - Path to pyrcel LUT netcdf/zarr file
-
-    Side Effects:
-        Sets global PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, AERONAMEMAP, THISRECIPE
+    This variant loads the LUT and keeps both `w_mean` and `w_prime` dimensions
+    (no interpolation at setup time), relying on downstream logic to select/use
+    the appropriate values for each point.
     """
-
     print(f"Opening LUT from {pyrcel_lut_path}")
     pyrcellut = xr.open_dataset(pyrcel_lut_path)
 
-    print(f"Using deardorff_scale: {CONFIGDICT['deardorff_scale']:.02f},\n" +
-          f"LUT w_mean range: {pyrcellut.w_mean.min().values:.02f}m/s-{pyrcellut.w_mean.max().values:.02f}m/s\n" +
-          f"LUT w_prime range: {pyrcellut.w_prime.min().values:.02f}m/s-{pyrcellut.w_prime.max().values:.02f}m/s")
+    print(
+        "Using deardorff_scale: "
+        f'{CONFIGDICT["deardorff_scale"]:.02f},\n'
+        f"LUT w_mean range: {pyrcellut.w_mean.min().values:.02f}m/s-"
+        f"{pyrcellut.w_mean.max().values:.02f}m/s\n"
+        f"LUT w_prime range: {pyrcellut.w_prime.min().values:.02f}m/s-"
+        f"{pyrcellut.w_prime.max().values:.02f}m/s"
+    )
 
     finalize_pyrcel_lut_setup(
         pyrcellut,
-        CONFIGDICT["ccn_densities"], CONFIGDICT["ccn_mact_def"],
-        CONFIGDICT["ccn_recipe_file"], ["w_mean", "w_prime"])
+        CONFIGDICT["ccn_densities"],
+        CONFIGDICT["ccn_mact_def"],
+        CONFIGDICT["ccn_recipe_file"],
+        ["w_mean", "w_prime"],
+    )
 
 
-def get_actual_lut_recipes(represented_aeros):
+def get_actual_lut_recipes(
+    represented_aeros: Iterable[str],
+) -> Tuple[xr.Dataset, Dict[str, Dict[str, float]], List[str]]:
     """
-    Adjust LUT recipe to include only represented aerosol species
+    Restrict the LUT and recipes to only the aerosol species present in the data.
 
-    Args:
-        represented_aeros: - Iterable containing names of represented aerosols
+    Parameters
+    ----------
+    represented_aeros : iterable of str
+        Names of aerosol variables actually present in the fields.
 
-    Returns:
-        actual_pyrcellut, actual_recipe, needed_aeros
+    Returns
+    -------
+    (actual_pyrcellut, actual_recipe, needed_aeros)
+        - actual_pyrcellut : xr.Dataset
+            Possibly reduced LUT (species dropped -> first index selected + dropped).
+        - actual_recipe : dict
+            Recipe only including species present in `represented_aeros`.
+        - needed_aeros : list[str]
+            Variables to keep from input (includes "pressure" + represented species).
     """
-    from ..main.config import THISRECIPE, PYRCNAMEMAP, PYRCELLUT
 
-    var_to_keep = ["pressure"]
-    actual_recipe = {}
+    var_to_keep: List[str] = ["pressure"]
+    actual_recipe: Dict[str, Dict[str, float]] = {}
+
     print("Computing CCN species:", flush=True)
-    lut_dims_to_exclude = []
-    for ccn_name,rec in THISRECIPE.items():
-        this_ccn_present = False
-        for aero in rec:
-            if aero in represented_aeros:
-                this_ccn_present = True
-                var_to_keep.append(aero)
+    lut_dims_to_exclude: List[str] = []
+
+    represented_aeros_set = set(represented_aeros)
+    for ccn_name, rec in config.THISRECIPE.items():
+        this_ccn_present = any(aero in represented_aeros_set for aero in rec)
+
         if this_ccn_present:
-            actual_recipe[ccn_name] = {}
-            for aero in rec:
-                if aero in represented_aeros:
-                    actual_recipe[ccn_name][aero] = rec[aero]
+            # Filter the recipe to present species
+            actual_recipe[ccn_name] = {a: rec[a] for a in rec if a in represented_aeros_set}
+            var_to_keep.extend(actual_recipe[ccn_name].keys())
+
             print(f"CCN species {ccn_name}:")
-            print("\n".join([f"\t{k} {v:.2f}"
-                             for k,v in actual_recipe[ccn_name].items()]))
+            print("\n".join([f"\t{k} {v:.2f}" for k, v in actual_recipe[ccn_name].items()]))
         else:
             print(f"Excluding PYRCEL LUT CCN species {ccn_name}")
-            lut_dims_to_exclude.append(PYRCNAMEMAP[ccn_name])
+            lut_dims_to_exclude.append(config.PYRCNAMEMAP[ccn_name])
 
-    if len(lut_dims_to_exclude) > 0:
-        actual_pyrcellut = PYRCELLUT.isel({dim: 0 for dim in lut_dims_to_exclude},
-                                          drop=True).load()
+    if lut_dims_to_exclude:
+        actual_pyrcellut = config.PYRCELLUT.isel({dim: 0 for dim in lut_dims_to_exclude}, drop=True).load()
     else:
-        actual_pyrcellut = PYRCELLUT.load()
+        actual_pyrcellut = config.PYRCELLUT.load()
+
     print("done!", flush=True)
     return actual_pyrcellut, actual_recipe, list(set(var_to_keep))

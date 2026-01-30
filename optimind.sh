@@ -212,6 +212,19 @@ if [ "$TUNE_SWITCH" = true ]; then
   if command -v sbatch &> /dev/null; then
     sbatch --array=${INI_YEAR}-${END_YEAR}%20 --wait -t 06:00:00 -c $NUM_CPUS --chdir="$TMP_DIRECTORY" --mem="${JOBMEM_GB}GB" --output="${LOGDIR}/job_output_%a.txt" \
       --error="${LOGDIR}/job_output_%a.txt" "$WRAPPER_TUNE" &
+    wait -n
+    case $? in
+      "0")
+        echo "Done!"
+        ;;
+      "127")
+        echo "Warning: there were no jobs   on wait!"
+        ;;
+      *)
+        echo  "Tuning procedure failed for at least one job! Exiting."
+        exit 1
+        ;;
+    esac
   else
     echo "SLURM not available. running locally."
     for ((this_year=INI_YEAR; this_year<=END_YEAR; this_year++));
@@ -219,21 +232,14 @@ if [ "$TUNE_SWITCH" = true ]; then
       echo "Launching year $ZERO_YEAR+$this_year..."
       $BASH_EXEC "$WRAPPER_TUNE" $this_year 2>&1 | tee "${LOGDIR}/job_output_${this_year}.txt"
     done
+    if [ $? -ne 0 ]; then
+      echo "Tuning procedure failed for at least one job! Exiting."
+      exit 1
+    else
+      echo "Done!"
+    fi
   fi
 
-  wait -n
-  case $? in
-    "0")
-      echo "Done!"
-      ;;
-    "127")
-      echo "Warning: there were no jobs   on wait!"
-      ;;
-    *)
-      echo  "Tuning procedure failed for at least one job! Exiting."
-      exit 1
-      ;;
-  esac
 else
   echo "Skipping tuning!"
 fi
@@ -242,52 +248,62 @@ if [ "$STATS_SWITCH" = true ]; then
   echo "Computing stats..."
   if command -v sbatch &> /dev/null; then
     sbatch --wait -t 00:05:00 -c 4 --chdir="$TMP_DIRECTORY" --mem="4GB" --output="${LOGDIR}/tune_stats_output.txt" --error="${LOGDIR}/tune_stats_output.txt" "$WRAPPER_STATS" &
+    wait -n
+    case $? in
+      "0")
+        echo "Done!"
+        ;;
+      "127")
+        echo "Warning: there were no jobs on wait!"
+        ;;
+      *)
+        echo "Failed computing stats! Exiting."
+        exit 1
+        ;;
+    esac
   else
     echo "SLURM not available. running locally."
     $BASH_EXEC "$WRAPPER_STATS" 2>&1 | tee "${LOGDIR}/tune_stats_output.txt"
-  fi
-  wait -n
-  case $? in
-    "0")
-      echo "Done!"
-      ;;
-    "127")
-      echo "Warning: there were no jobs on wait!"
-      ;;
-    *)
+    if [ $? -ne 0 ]; then
       echo "Failed computing stats! Exiting."
       exit 1
-      ;;
-  esac
+    else
+      echo "Done!"
+    fi
+  fi
 else
-  echo "Skipping stats!"
+echo "Skipping stats!"
 fi
 
 if [ "$ND_SWITCH" = true ]; then
   if command -v sbatch &> /dev/null; then
     echo "Computing tuned nd for all years..."
     sbatch --array=${INI_YEAR}-${END_YEAR}%20 --wait -t 01:00:00 -c $NUM_CPUS --chdir="$TMP_DIRECTORY" --mem="${JOBMEM_GB}GB" --output="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_output.txt" --error="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_output.txt" "$WRAPPER_ND" &
+    wait -n
+    case $? in
+      "0")
+        echo "Done!"
+        ;;
+      "127")
+        echo "Warning: there were no jobs on wait!"
+        ;;
+      *)
+        echo "Computing Nd failed for at least one job!!"
+        exit 1
+        ;;
+    esac
   else
     echo "SLURM not available. running locally."
     for ((this_year=INI_YEAR; this_year<=END_YEAR; this_year++));
     do
       echo "Launching year $ZERO_YEAR+$this_year..."
       SLURM_ARRAY_TASK_ID=$this_year $BASH_EXEC "$WRAPPER_ND" 2>&1 | tee "${LOGDIR}/compute_nd_${ZERO_YEAR}+${this_year}_output.txt"
+      if [ $? -ne 0 ]; then
+        echo "Computing Nd failed for year $((this_year+ZERO_YEAR))!"
+        exit 1
+      fi
     done
   fi
-  wait -n
-  case $? in
-    "0")
-      echo "Done!"
-      ;;
-    "127")
-      echo "Warning: there were no jobs on wait!"
-      ;;
-    *)
-      echo "Computing Nd failed for at least one job!!"
-      exit 1
-      ;;
-  esac
 else
   echo "Skipping tuned nd computation!"
 fi

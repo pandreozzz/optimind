@@ -1,94 +1,92 @@
 #!/usr/bin/env python3
-"""Command-line interface for cloud optical property LUT tuning."""
+"""Command‑line interface for cloud optical property LUT tuning."""
+
+from __future__ import annotations
+
 import argparse
 import logging
-from dask.distributed import Client
 from pathlib import Path
 
-from ..main.config import digest_config
-from ..utils.memory import get_available_memory
+from dask.distributed import Client
+
+from ..main.config import CONFIGDICT, digest_config
 from ..utils.dask import optimize_dask_for_memory
+from ..utils.memory import get_available_memory
 
-
-# Setup logging
+# ---------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
-LOGDIC = {}
+# Kept for compatibility with modules that import it (filled elsewhere)
+LOGDIC: dict = {}
 
-def main():
-    """Main CLI entry point."""
 
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
         description="Optimize aerosol size distributions using pyrcel and MODIS Nd data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Process year with configuration config.json
-  python run_tuning.py --year 2020 --config config.json --logdir /tmp/logdir
-
-  # Show configuration options and quit
-  python run_tuning.py --year 2020 --config config.json --logdir /tmp/logdir --show-config
-        """
+        epilog=(
+            "Examples:\n"
+            "  # Process year with configuration config.json\n"
+            "  python run_tuning.py --year 2020 --config config.json --logdir /tmp/logdir\n"
+            "  # Show configuration options and quit\n"
+            "  python run_tuning.py --year 2020 --config config.json " +\
+                "--logdir /tmp/logdir --show-config\n"
+        ),
     )
-
     parser.add_argument(
         "--year",
         type=int,
         required=True,
-        help="Year to process (e.g., 2020)"
+        help="Year to process (e.g., 2020)",
     )
-
     parser.add_argument(
         "--config",
         type=str,
         required=True,
-        help="Path to configuration JSON file"
+        help="Path to configuration JSON file",
     )
-
     parser.add_argument(
         "--show-config",
         action="store_true",
-        help="Show default configuration options and exit"
+        help="Show default configuration options and exit",
     )
-
     parser.add_argument(
         "--logdir",
         type=str,
         required=True,
-        help="Path to directory for logs"
+        help="Path to directory for logs",
     )
-
     parser.add_argument(
         "--num-procs",
         type=int,
         default=4,
-        help="Number of workers for the Dask local cluster"
+        help="Number of workers for the Dask local cluster",
     )
-
     parser.add_argument(
         "--verbose",
         "-v",
         action="store_true",
-        help="Enable verbose logging"
+        help="Enable verbose logging",
     )
+    return parser
 
+
+def main() -> int:
+    """Main CLI entry point."""
+    parser = build_parser()
     args = parser.parse_args()
 
-    # Setup verbose logging
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    # Show default config
-    if args.show_config:
-        from ..main.config import CONFIGDICT
-        print("Default configuration options:\n")
-        for key, value in sorted(CONFIGDICT.items()):
-            print(f"  {key:30} : {value}")
-        return 0
+
 
     config_path = Path(args.config)
     if not config_path.exists():
@@ -98,26 +96,35 @@ Examples:
     if not logdir_path.exists():
         parser.error(f"Logdir path not found: {logdir_path}")
 
-    # Digesting config
-    logger.info(f"Loading configuration from {config_path}")
+    # Load configuration
+    LOGGER.info("Loading configuration from %s", config_path)
     digest_config(str(config_path))
 
-    # Import here to avoid import errors if tuning dependencies aren't installed
+    # Show default config if requested
+    if args.show_config:
+
+        print("Default configuration options:\n")
+        for key, value in sorted(CONFIGDICT.items()):
+            print(f"{key:30} : {value}")
+        return 0
+    
+    # Lazy import to avoid heavy deps at import time
     from ..main.tune_driver import run_tuning_year
 
-    # Process years
-    logger.info(f"Processing year {args.year}")
+    # Process the requested year
+    LOGGER.info("Processing year %s", args.year)
 
     with optimize_dask_for_memory():
         totmem_mbytes = get_available_memory()
         print(f"Total memory {totmem_mbytes:.2f}MB")
-        with Client(
-            n_workers=args.num_procs,
-            memory_limit=f"{totmem_mbytes*0.98/args.num_procs:.2f}MB"
-            ):
+        mem_per_worker_mb = max(totmem_mbytes * 0.98 / max(args.num_procs, 1), 256.0)
+
+        with Client(n_workers=args.num_procs, memory_limit=f"{mem_per_worker_mb:.2f}MB"):
             run_tuning_year(args.year, str(config_path), str(logdir_path))
 
-    logger.info("All years processed successfully!")
+    LOGGER.info("All years processed successfully!")
     return 0
 
 
+if __name__ == "__main__":
+    raise SystemExit(main())

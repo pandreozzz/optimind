@@ -1,27 +1,28 @@
+"""Handling of fields containing aerosols"""
 import os
 from glob import glob
 import numpy as np
 import xarray as xr
 
 from ..main.config import CONFIGDICT, OPENDS_ZARR_KWARGS, TMPFLDDIR
-from .stage import aero_pl_namelike, aero_sfc_namelike
+from .stage import aero_pl_namelike
 
-AERORENAMEDIC = dict(
-    aermr01 = "Sea_Salt_bin1",
-    aermr02 = "Sea_Salt_bin2",
-    aermr03 = "Sea_Salt_bin3",
-    aermr04 = "Mineral_Dust_bin1",
-    aermr05 = "Mineral_Dust_bin2",
-    aermr06 = "Mineral_Dust_bin3",
-    aermr07 = "Organic_Matter_hydrophilic",
-    aermr09 = "Black_Carbon_hydrophilic",
-    aermr11 = "Sulfates",
-    aermr16 = "Nitrate_fine",
-    aermr17 = "Nitrate_coarse",
-    aermr18 = "Ammonium",
-    aermr19 = "Biogenic_Secondary_Organic",
-    aermr20 = "Anthropogenic_Secondary_Organic"
-)
+AERORENAMEDIC = {
+    "aermr01" : "Sea_Salt_bin1",
+    "aermr02" : "Sea_Salt_bin2",
+    "aermr03" : "Sea_Salt_bin3",
+    "aermr04" : "Mineral_Dust_bin1",
+    "aermr05" : "Mineral_Dust_bin2",
+    "aermr06" : "Mineral_Dust_bin3",
+    "aermr07" : "Organic_Matter_hydrophilic",
+    "aermr09" : "Black_Carbon_hydrophilic",
+    "aermr11" : "Sulfates",
+    "aermr16" : "Nitrate_fine",
+    "aermr17" : "Nitrate_coarse",
+    "aermr18" : "Ammonium",
+    "aermr19" : "Biogenic_Secondary_Organic",
+    "aermr20" : "Anthropogenic_Secondary_Organic"
+}
 
 def get_aero_fields(year, timesel = None, latmin = None, latmax = None) -> xr.Dataset:
     """
@@ -47,12 +48,14 @@ def get_aero_fields(year, timesel = None, latmin = None, latmax = None) -> xr.Da
         latmin = min(CONFIGDICT["latitudes_minmax"])
     if latmax is None:
         latmax = max(CONFIGDICT["latitudes_minmax"])
-    
-    opends_kwargs = OPENDS_ZARR_KWARGS if CONFIGDICT["use_zarr"] else dict(engine="netcdf4")
+ 
+    opends_kwargs = OPENDS_ZARR_KWARGS if CONFIGDICT["use_zarr"] else {"engine": "netcdf4"}
     dataext = "_zarr" if CONFIGDICT["use_zarr"] else ".nc"
 
-    cams_prog_files = glob(os.path.join(TMPFLDDIR, aero_pl_namelike(year, CONFIGDICT["gridspec"])+dataext))
-    
+    cams_prog_files = glob(
+        os.path.join(TMPFLDDIR, aero_pl_namelike(year, CONFIGDICT["gridspec"])+dataext)
+        )
+
     # Neclect surface fields
     #cams_prog_files = cams_prog_files+glob(os.path.join(os.environ["TMPDIR"], "fields", aero_sfc_namelike(year, CONFIGDICT["gridspec"]+dataext)))
 

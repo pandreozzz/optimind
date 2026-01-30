@@ -1,168 +1,172 @@
+"""Global configuration and helpers for the tuning workflow."""
+
+from __future__ import annotations
+
 import json
 import os
+from typing import Any, Dict, List
 
 import xarray as xr
 
-global SCRIPTDIR, GETLUTVAL_LIB, VERTINTERP_LIB
+# ---------------------------------------------------------------------
+# Paths (computed from script location)
+# ---------------------------------------------------------------------
+SCRIPTDIR = os.path.dirname(os.path.realpath(__file__))
+GETLUTVAL_LIB = os.path.join(SCRIPTDIR, "../../libs/shared/fget_lutval.so")
+VERTINTERP_LIB = os.path.join(SCRIPTDIR, "../../libs/shared/fvertinterp.so")
 
-SCRIPTDIR=os.path.dirname(os.path.realpath(__file__))
-GETLUTVAL_LIB=os.path.join(SCRIPTDIR, "../../libs/shared/fget_lutval.so")
-VERTINTERP_LIB=os.path.join(SCRIPTDIR, "../../libs/shared/fvertinterp.so")
+ERA5_DATADIR = os.path.join(SCRIPTDIR, "../../data/era5")
+AERO_DATADIR = os.path.join(SCRIPTDIR, "../../data/cams")
+MODIS_DATADIR = os.path.join(SCRIPTDIR, "../../data/modis")
 
-global ERA5_DATADIR, AERO_DATADIR, MODIS_DATADIR
-ERA5_DATADIR=os.path.join(SCRIPTDIR, "../../data/era5")
-AERO_DATADIR=os.path.join(SCRIPTDIR, "../../data/cams")
-MODIS_DATADIR=os.path.join(SCRIPTDIR, "../../data/modis")
+# Temporary fields directory (ensure trailing separator via os.path.join)
+TMPFLDDIR = os.path.join(os.environ.get("TMPDIR", "/tmp"), "fields")
+os.makedirs(TMPFLDDIR, exist_ok=True)
 
-global CONFIGDICT
-CONFIGDICT = {
+# ---------------------------------------------------------------------
+# Global configuration dictionary (defaults)
+# ---------------------------------------------------------------------
+CONFIGDICT: Dict[str, Any] = {
     "gridspec": "r30",
-    "latitudes_minmax": [-90,90],
-    "longitudes_minmax": [0,360],
-    "cos_sza_minmax": [0,1],
-    "localhour_minmax": [0,24],
+    "latitudes_minmax": [-90, 90],
+    "longitudes_minmax": [0, 360],
+    "cos_sza_minmax": [0, 1],
+    "localhour_minmax": [0, 24],
     "hourly": "3hourly",
     "aerofromclimatology": False,
-    "fixedaeromodellevel": None, #135 #129 # or None
-
-    "nlevelsbelowcloudbase" : None,
-
-    "aeros_out_of_cloud" : None, # None means all - it is the aerosol mmr picked at fixedaeromodellevel or below cloud base
-
+    "fixedaeromodellevel": None,  # 135 or 129 or None
+    "nlevelsbelowcloudbase": None,
+    # None means: use aerosol mmr at fixedaeromodellevel or below cloud base
+    "aeros_out_of_cloud": None,
     "aerosolclimfile": None,
-    #"/home/papa/data/aerosol_cams_climatology_49r1_v2_4D_no_compression_classic",
-    #aerosol_cams_climatology_43r3_v2_3D_no_compression_classic.nc
-    #aerosol_cams_climatology_49r2_1951-2019_4D.nc
-    #aerosol_cams_climatology_49r1camsround3_3D_no_compression_classic.nc
-
-    "pyrcellutpath": None, #NO DEFAULT  "/home/papa/Documents/parapyrcel/outdir_luts/init_6specs_01su_w10.nc",
-    #CONFIGDICT["pyrcellutpath"]="/home/papa/Documents/parapyrcel/lut_sepcarb_sepni_1w_q06withscaling_tunv2.nc"
-    # wspeed_type
+    "pyrcellutpath": None,  # REQUIRED by calling code
+    # wspeed_type:
     # 0: fixed monodisperse speed
-    # 1: w_mean=w_ls
-    #    w_prime fixed (set "wprime" below)
-    # 2: w_mean=w_ls + g/cp dT/dt (requires ml tendencies!),
-    #    w_prime fixed (set "wprime" below)
-    # 3: w_mean=w_ls,
-    #    w_prime=deardorff_scale*wstar
-    # 4: w_mean=w_ls + g/cp dT/dt (requires ml tendencies!),
-    #    w_prime=deardorff_scale*wstar
-    "wspeed_type" : 3,
-    "w_prime" : None,# float for wspeed_type 1 and 2
-    "w_prime_min" : 0.1,
-    "w_mean_min" : -10,
-    "wspeed": None, # For gen 0, with fixed monodisperse vertical speed
+    # 1: w_mean = w_ls; w_prime fixed ("w_prime")
+    # 2: w_mean = w_ls + g/cp dT/dt (needs ml tendencies); w_prime fixed
+    # 3: w_mean = w_ls; w_prime = deardorff_scale * wstar
+    # 4: w_mean = w_ls + g/cp dT/dt; w_prime = deardorff_scale * wstar
+    "wspeed_type": 3,
+    "w_prime": None,  # float for wspeed_type 1 and 2
+    "w_prime_min": 0.1,
+    "w_mean_min": -10,
+    "wspeed": None,  # for gen 0, fixed monodisperse vertical speed
     "deardorff_scale": 0.4,
     "kinetically_limited": False,
-    "scalemcon": False, # Makes sense only for prognostic areosols
+    "scalemcon": False,  # Makes sense only for prognostic aerosols
     "scale_recipe_ingredient": None,
     "bindseasalt": True,
     "ss_coarsetofine_ratio": 10,
-
     "grosvenor_tau_c_correction": False,
-
     "firstguess_radii": None,
-    "global_mass_scaler" : None,
-
-    "modisndrefsample": "Q06", #"BR17" or "Q06"
-    "modisndusemean" : False,
+    "global_mass_scaler": None,  # mapping {species: factor}
+    "modisndrefsample": "Q06",  # "BR17" or "Q06"
+    "modisndusemean": False,
     "modisndvalidthr": 0.01,
     "samplespreads": ["Q06", "G18", "BR17"],
-
     "modisndbiascorrection": False,
-
     "cldetect_cc_threshold": 0.8,
     "cldetect_t_threshold": 268,
     "cldetect_iwr_threshold": 0.05,
     "cldetect_thresh_valid_monthly": 0.1,
+    "useverheggenactivfrac": False,
     "tune_rain_dispersion": False,
-
     "weightbycloudpresence": False,
-
-    "ccn_densities" : [1760, 1760, 2180, 2180, 1300, 1000],
-    "ccn_mact_def"  : [0.7, 0.8, 0.9, 0.9, 0.7, 0.7],
-    "ccn_recipe_file" : None,
-
-    "nprocs" : 1,
-    "use_zarr" : True,
+    "ccn_densities": [1760, 1760, 2180, 2180, 1300, 1000],
+    "ccn_mact_def": [0.7, 0.8, 0.9, 0.9, 0.7, 0.7],
+    "ccn_recipe_file": None,
+    "nprocs": 1,
+    "use_zarr": True,
 }
 
-# Global state variables
-global SOME_AEROS_OUT_OF_CLOUD, PYRCELLUT, THISLUTAERO, PYRCNAMEMAP, THISRECIPE
+# Global state variables (kept for compatibility with existing code)
 SOME_AEROS_OUT_OF_CLOUD = False
 PYRCELLUT = xr.Dataset(None)
-THISLUTAERO = []
-PYRCNAMEMAP = {}
-AERONAMEMAP = {}
-THISRECIPE = {}
-global TMPFLDDIR
-TMPFLDDIR = os.environ.get('TMPDIR', '/tmp') + 'fields'
-os.makedirs(TMPFLDDIR, exist_ok=True)
+THISLUTAERO: List[Any] = []
+PYRCNAMEMAP: Dict[str, Any] = {}
+AERONAMEMAP: Dict[str, Any] = {}
+THISRECIPE: Dict[str, Any] = {}
 
-# File signature constants
-global ERA5MLFILESIGN, ERA5TENDFILESIGN, ERA5SFCFILESIGN, COPYFIELDS
+# Default ERA5 file signatures
 ERA5MLFILESIGN = "ml_sel"
 ERA5TENDFILESIGN = "tend_ml"
 ERA5SFCFILESIGN = "sfc"
 COPYFIELDS = False
 
-global OPENDS_ZARR_KWARGS, SSRH80
-OPENDS_ZARR_KWARGS = {
+# IO defaults
+OPENDS_ZARR_KWARGS: Dict[str, Any] = {
     "engine": "zarr",
     "chunks": {"time": "auto"},
-    "consolidated": False
+    "consolidated": False,
 }
-
 SSRH80 = True
 
-def digest_config(config_path: str):
+
+def digest_config(config_path: str) -> None:
     """
-    Load and validate configuration from JSON file.
+    Load and validate configuration from a JSON file and merge into CONFIGDICT.
 
-    Reads a JSON configuration file and merges settings with CONFIGDICT,
-    validating that all config keys exist in defaults. Prints status of
-    each configuration option.
+    Parameters
+    ----------
+    config_path : str
+        Path to the JSON configuration file.
 
-    Args:
-        config_path: str - Path to configuration JSON file
-
-    Raises:
-        ValueError: If a config key is unknown (not in default CONFIGDICT)
-
-    Side Effects:
-        - Modifies global CONFIGDICT
-        - Modifies global SOME_AEROS_OUT_OF_CLOUD
-        - Prints configuration status to stdout
+    Raises
+    ------
+    ValueError
+        If a config key in the file is not present in the default CONFIGDICT.
     """
-    import json
-
-    # Initialize global variables
-    with open(config_path) as config_file:
-        #config_logs = "\n".join(config_file.readlines())
-        config_in = json.load(config_file)
-
     # Read configurations
-    allkeys = list(set(CONFIGDICT.keys()) | config_in.keys())
-    for key in allkeys:
-        if (key in config_in) and (not key.startswith("other_")):
-            CONFIGDICT[key] = config_in[key]
-            if key not in CONFIGDICT:
-                raise ValueError(f"config key {key} unknown. Verify spelling errors.")
-            print(f"Set {key:>20} to {CONFIGDICT[key]}")
-        elif key in CONFIGDICT:
-            print(f"Using default value for {key}: {CONFIGDICT[key]}")
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        cfg_in: Dict[str, Any] = json.load(config_file)
 
-    if (CONFIGDICT["nlevelsbelowcloudbase"] is not None) and (CONFIGDICT["fixedaeromodellevel"] is not None):
-        print("Warning! I will ignore fixedaeromodellevel setting because using nlevelsbelowcloudbase!")
+    # Validate keys: anything not in defaults (and not prefixed with "other_") is an error
+    for key in cfg_in:
+        if not key.startswith("other_") and key not in CONFIGDICT:
+            raise ValueError(
+                f"config key {key} unknown. Verify spelling errors."
+            )
+
+    # Merge (excluding "other_*" keys which are ignored by design)
+    for key, val in cfg_in.items():
+        if key.startswith("other_"):
+            continue
+        CONFIGDICT[key] = val
+        print(f"Set {key:>20} to {CONFIGDICT[key]}")
+
+    # Print defaults for keys not present in input
+    for key, val in CONFIGDICT.items():
+        if key not in cfg_in and not key.startswith("other_"):
+            print(f"Using default value for {key}: {val}")
+
+    # Cross-field consistency
+    if (
+        CONFIGDICT["nlevelsbelowcloudbase"] is not None
+        and CONFIGDICT["fixedaeromodellevel"] is not None
+    ):
+        print(
+            "Warning! Ignoring fixedaeromodellevel because nlevelsbelowcloudbase is set!"
+        )
         CONFIGDICT["fixedaeromodellevel"] = None
-    SOME_AEROS_OUT_OF_CLOUD = (CONFIGDICT["nlevelsbelowcloudbase"] is not None) or (CONFIGDICT["fixedaeromodellevel"] is not None)
 
-    # TODO: Implement proper check of wspeed_type
-    if (CONFIGDICT["deardorff_scale"] is not None) and (CONFIGDICT["wspeed"] is not None):
-        print(f"Warning! Setting deardorff_scale={CONFIGDICT['deardorff_scale']:.2f} overrides wspeed={CONFIGDICT['wspeed']:.2f} settings!")
+    # Flag for “aeros out of cloud”
+    global SOME_AEROS_OUT_OF_CLOUD  # pylint: disable=global-statement
+    SOME_AEROS_OUT_OF_CLOUD = (
+        CONFIGDICT["nlevelsbelowcloudbase"] is not None
+        or CONFIGDICT["fixedaeromodellevel"] is not None
+    )
+
+    # Deardorff scale vs wspeed
+    if CONFIGDICT["deardorff_scale"] is not None and CONFIGDICT["wspeed"] is not None:
+        print(
+            f"Warning! Setting deardorff_scale={CONFIGDICT['deardorff_scale']:.2f} "
+            f"overrides wspeed={CONFIGDICT['wspeed']}."
+        )
         CONFIGDICT["wspeed"] = None
+
     print(f"Successfully read configuration from {config_path}")
 
-def get_config():
-    """Get current global configuration dictionary."""
+
+def get_config() -> Dict[str, Any]:
+    """Return the current global configuration dictionary."""
     return CONFIGDICT

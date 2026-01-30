@@ -1,8 +1,8 @@
 """Memory management utilities for large dataset processing."""
 import gc
-import ctypes
-import psutil
+#import ctypes
 from contextlib import contextmanager
+import psutil
 
 
 def trim_memory() -> int:

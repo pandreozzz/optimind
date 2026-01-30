@@ -1,7 +1,8 @@
+"""Generation of CCN fields"""
 import numpy as np
 import xarray as xr
 
-from ..main.config import CONFIGDICT, SOME_AEROS_OUT_OF_CLOUD
+from ..main.config import CONFIGDICT
 
 def compute_lut_species_from_ifs_species(recipes, aero_cams,
                                          densities, scale_mmr=None):
@@ -17,7 +18,7 @@ def compute_lut_species_from_ifs_species(recipes, aero_cams,
     else:
         raise ValueError("Error in compute_lut_species_from_ifs_species: "+\
                          f"unexpected type for recipes ({type(recipes)})")
-        
+
     for r,(ccn_name,recipe) in enumerate(recipes_dict.items()):
         n_valid_ingredients = 0
         this_ingredients = []
@@ -43,8 +44,14 @@ def compute_lut_species_from_ifs_species(recipes, aero_cams,
 
     return xr.Dataset(lut_species)
 
-def compute_ccn_species(this_aero : xr.Dataset, this_recipe) -> xr.Dataset:
-
+def compute_ccn_species(this_aero : xr.Dataset, this_recipe : dict) -> xr.Dataset:
+    """
+    Generates CCN fields from aerosol fields
+    
+    Args:
+        this_aero: xr.Dataset - Aerosol fields
+        this_recipe: dict - Recipes, mapping CCN: {aerosol : scaling}
+    """
     this_lut_species =\
     compute_lut_species_from_ifs_species(
         recipes=this_recipe,
@@ -52,4 +59,3 @@ def compute_ccn_species(this_aero : xr.Dataset, this_recipe) -> xr.Dataset:
         densities=np.float32(1.), scale_mmr=None)
 
     return this_lut_species.clip(min=0.)
-
