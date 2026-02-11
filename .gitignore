@@ -2,7 +2,7 @@
 *.mod
 
 *__pycache__
-
+*.ipy*
 
 .DS_Store
 

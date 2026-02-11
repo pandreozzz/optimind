@@ -22,7 +22,8 @@
 #   -h, --help                Show this help message
 #
 
-set -euo pipefail
+#set -euo pipefail
+
 
 SCRIPT_DIR=$(realpath "$(dirname "$0")")
 
@@ -31,10 +32,11 @@ BASE_LOGDIR="${BASE_LOGDIR:-"${SCRIPT_DIR}/logs"}"
 BASH_EXEC="${BASH_EXEC:-/bin/bash}"
 
 # Python-ware
-PYTHON_EXEC="${PYTHON_EXEC:-python3}"
-TUNE_MODULE="pyoptimind.tune"
-STATS_MODULE="pyoptimind.stats"
-ND_MODULE="pyoptimind.nd"
+PYTHON_EXEC="${PYTHON_EXEC:-$(which python3)}"
+MAIN_MODULE="pyoptimind"
+TUNE_MODULE="$MAIN_MODULE.tune"
+STATS_MODULE="$MAIN_MODULE.stats"
+ND_MODULE="$MAIN_MODULE.nd"
 
 # Work directory
 WORKDIR="${SCRIPT_DIR}/workdir"
@@ -139,12 +141,15 @@ CONFIG_BASEDIR="${CONFIG_PATH%/*}" #where the CONFIG_FILE is located
 TUNE_TYPE="${CONFIG_BASEDIR##*/}"
 
 # Setup logging
-LOGDIR="${BASE_LOGDIR}/${TUNE_TYPE}/logs_${CONFIG_NAME}"
+LOGDIR=$(realpath "${BASE_LOGDIR}/${TUNE_TYPE}/logs_${CONFIG_NAME}")
 mkdir -p "$LOGDIR"
 
 # Create temporary work directory
 TMP_DIRECTORY=$(mktemp -d "${WORKDIR}/tune_lut_XXXXXXXXXX")
-trap "rm -rf $TMP_DIRECTORY" EXIT
+ln -s $(realpath $MAIN_MODULE) $TMP_DIRECTORY/
+cp $(realpath $CONFIG_PATH) $TMP_DIRECTORY/$CONFIG_FILE
+
+#trap "rm -rf $TMP_DIRECTORY" EXIT
 
 echo "---------------------------------------------------------------"
 echo "  tune-lut Launch Script"
@@ -154,6 +159,7 @@ echo "Configuration:"
 echo "   Config file: $CONFIG_PATH"
 echo "   Tuning type: $TUNE_TYPE"
 echo "   Config name: $CONFIG_NAME"
+echo "   Python exec: $PYTHON_EXEC"
 echo ""
 echo "Job Parameters:"
 echo "   Memory: ${JOBMEM_GB} GB"
@@ -188,13 +194,14 @@ WRAPPER_ND="${TMP_DIRECTORY}/wrapper_nd.sh"
 cat << EOF > "$WRAPPER_TUNE"
 #!/bin/bash
 set -euo pipefail
-this_year=\${SLURM_ARRAY_TASK_ID:- }
-if [ \$this_year==" " ];
+this_year=\${SLURM_ARRAY_TASK_ID:-\${1:-999}}
+if [[ -z "\${SLURM_ARRAY_TASK_ID:-}" ]];
 then
-  this_year=\${1:- }
+  echo "Warning: NO year provided by SLURM_ARRAY_TASK_ID"
 fi
 this_year=\$((\$this_year+$ZERO_YEAR))
-$PYTHON_EXEC -m "$TUNE_MODULE" --year \$this_year --config "$CONFIG_PATH" --logdir "$LOGDIR" --num-procs $NUM_PROCS
+echo "This year is \$this_year"
+$PYTHON_EXEC -m "$TUNE_MODULE" --year \$this_year --config "$CONFIG_FILE" --logdir "$LOGDIR" --num-procs $NUM_PROCS
 EOF
 cat << EOF > "$WRAPPER_STATS"
 #!/bin/bash
@@ -204,27 +211,37 @@ EOF
 cat << EOF > "$WRAPPER_ND"
 #!/bin/bash
 set -euo pipefail
-$PYTHON_EXEC -m "$ND_MODULE" \$((\$SLURM_ARRAY_TASK_ID+$ZERO_YEAR)) "$CONFIG_PATH" "$LOGDIR" "$JOBMEM_GB" "$NUM_PROCS"
+this_year=\${SLURM_ARRAY_TASK_ID:-\${1:-999}}
+if [[ -z "\${SLURM_ARRAY_TASK_ID:-}" ]];
+then
+  echo "Warning: NO year provided by SLURM_ARRAY_TASK_ID"
+fi
+this_year=\$((\$this_year+$ZERO_YEAR))
+echo "This year is \$this_year"
+$PYTHON_EXEC -m "$ND_MODULE" --year \$this_year --config "$CONFIG_FILE" --logdir "$LOGDIR" --num-procs "$NUM_PROCS"
 EOF
 
 if [ "$TUNE_SWITCH" = true ]; then
   echo "Tuning nd..."
   if command -v sbatch &> /dev/null; then
-    sbatch --array=${INI_YEAR}-${END_YEAR}%20 --wait -t 06:00:00 -c $NUM_CPUS --chdir="$TMP_DIRECTORY" --mem="${JOBMEM_GB}GB" --output="${LOGDIR}/job_output_%a.txt" \
-      --error="${LOGDIR}/job_output_%a.txt" "$WRAPPER_TUNE" &
-    wait -n
-    case $? in
-      "0")
-        echo "Done!"
-        ;;
-      "127")
-        echo "Warning: there were no jobs   on wait!"
-        ;;
-      *)
-        echo  "Tuning procedure failed for at least one job! Exiting."
-        exit 1
-        ;;
-    esac
+    # --wait not always supported
+    jobid=$(sbatch --parsable --array="${INI_YEAR}-${END_YEAR}%20" --wait\
+           -t 06:00:00 -c $NUM_CPUS \
+           --chdir="$TMP_DIRECTORY" \
+           --mem="${JOBMEM_GB}GB" \
+           --output="${LOGDIR}/job_output_%a.txt" \
+           --error="${LOGDIR}/job_output_%a.txt" \
+           "$WRAPPER_TUNE")
+    tune_job_name=${WRAPPER_TUNE##*/}
+    nfailed=$(sacct -j "$jobid" -n -o State,JobName | grep -Ev 'COMPLETED' \
+      | grep ${tune_job_name:0:8} | wc -l)
+    if [ "$nfailed" -gt 0 ]; then
+      echo "Tuning failed for $nfailed jobs. Exiting."
+      exit 1
+    else
+      echo "All jobs successfully completed."
+    fi
+
   else
     echo "SLURM not available. running locally."
     for ((this_year=INI_YEAR; this_year<=END_YEAR; this_year++));
@@ -247,20 +264,19 @@ fi
 if [ "$STATS_SWITCH" = true ]; then
   echo "Computing stats..."
   if command -v sbatch &> /dev/null; then
-    sbatch --wait -t 00:05:00 -c 4 --chdir="$TMP_DIRECTORY" --mem="4GB" --output="${LOGDIR}/tune_stats_output.txt" --error="${LOGDIR}/tune_stats_output.txt" "$WRAPPER_STATS" &
-    wait -n
-    case $? in
-      "0")
-        echo "Done!"
-        ;;
-      "127")
-        echo "Warning: there were no jobs on wait!"
-        ;;
-      *)
-        echo "Failed computing stats! Exiting."
-        exit 1
-        ;;
-    esac
+    jobid=$(sbatch --parsable --wait -t 00:05:00 \
+                   -c 4 --chdir="$TMP_DIRECTORY"\
+                   --mem="4GB" --output="${LOGDIR}/tune_stats_output.txt" \
+                   --error="${LOGDIR}/tune_stats_output.txt" \
+                   "$WRAPPER_STATS")
+    stat_job_name=${WRAPPER_STATS##*/}
+    nfailed=$(sacct -j "$jobid" -n -o State,JobName | grep -Ev 'COMPLETED' \
+      | grep ${stat_job_name:0:8} | wc -l)
+    if [ "$nfailed" -gt 0 ]; then
+      echo "Computing stats failed. Exiting."
+      exit 1
+    fi
+
   else
     echo "SLURM not available. running locally."
     $BASH_EXEC "$WRAPPER_STATS" 2>&1 | tee "${LOGDIR}/tune_stats_output.txt"
@@ -278,20 +294,22 @@ fi
 if [ "$ND_SWITCH" = true ]; then
   if command -v sbatch &> /dev/null; then
     echo "Computing tuned nd for all years..."
-    sbatch --array=${INI_YEAR}-${END_YEAR}%20 --wait -t 01:00:00 -c $NUM_CPUS --chdir="$TMP_DIRECTORY" --mem="${JOBMEM_GB}GB" --output="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_output.txt" --error="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_output.txt" "$WRAPPER_ND" &
-    wait -n
-    case $? in
-      "0")
-        echo "Done!"
-        ;;
-      "127")
-        echo "Warning: there were no jobs on wait!"
-        ;;
-      *)
-        echo "Computing Nd failed for at least one job!!"
-        exit 1
-        ;;
-    esac
+    jobid=$(sbatch --parsable --array="${INI_YEAR}-${END_YEAR}%20" --wait \
+           -t 01:00:00 -c $NUM_CPUS \
+           --chdir="$TMP_DIRECTORY" \
+           --mem="${JOBMEM_GB}GB" \
+           --output="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_output.txt" \
+           --error="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_output.txt" \
+           "$WRAPPER_ND")
+    # Check whether jobs failed
+    nd_job_name=${WRAPPER_ND##*/}
+    nfailed=$(sacct -j "$jobid" -n -o State,JobName | grep -Ev 'COMPLETED' \
+      | grep ${nd_job_name:0:8} | wc -l)
+    if [ "$nfailed" -gt 0 ]; then
+      echo "Computing Nd failed for $nfailed jobs. Exiting."
+      exit 1
+    fi
+    echo "Done!"
   else
     echo "SLURM not available. running locally."
     for ((this_year=INI_YEAR; this_year<=END_YEAR; this_year++));

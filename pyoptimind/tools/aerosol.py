@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
@@ -23,6 +23,68 @@ __all__ = [
     "get_nccn_over_mcon_from_speclist",
     "compute_ccn_ifs",
 ]
+
+#############################
+# CAMS SPECIES NAMES
+#############################
+@dataclass
+class AeroIdent:
+    longname  : str
+    shortname : str
+    spectype  : str
+    spechydro : bool
+    specbin   : int
+    def __post_init__(self):
+        for f in fields(self):
+            for name in self.__annotations__:
+                if name in ["longname", "shortname", "spectype"]:
+                    field_type = str
+                elif name in ["spechydro"]:
+                    field_type = bool
+                elif name in ["specbin"]:
+                    field_type = int
+                else:
+                    raise ValueError(f"No check defined for {name}")
+                if not isinstance(self.__dict__[name], field_type):
+                    current_type = type(self.__dict__[name])
+                    raise TypeError(f"The field `{name}` was assigned by `{current_type}` instead of `{field_type}`")
+
+CAMS_AERO_BUCKET = {
+    "Sea_Salt_bin1"                   : AeroIdent("Sea_Salt_bin1",
+                                                    "SS1", "SS",  True, 1),
+    "Sea_Salt_bin2"                   : AeroIdent("Sea_Salt_bin2",
+                                                    "SS2", "SS",  True, 2),
+    "Sea_Salt_bin3"                   : AeroIdent("Sea_Salt_bin3",
+                                                    "SS3", "SS",  True, 3),
+    "Mineral_Dust_bin1"               : AeroIdent("Mineral_Dust_bin1",
+                                                    "DD1", "DD", False, 1),
+    "Mineral_Dust_bin2"               : AeroIdent("Mineral_Dust_bin2",
+                                                    "DD2", "DD", False, 2),
+    "Mineral_Dust_bin3"               : AeroIdent("Mineral_Dust_bin3",
+                                                    "DD3", "DD", False, 3),
+    "Organic_Matter_hydrophilic"      : AeroIdent("Organic_Matter_hydrophilic",
+                                                    "OMH", "OM",  True, 0),
+    "Organic_Matter_hydrophobic"      : AeroIdent("Organic_Matter_hydrophobic",
+                                                    "OMN", "OM", False, 0),
+    "Black_Carbon_hydrophilic"        : AeroIdent("Black_Carbon_hydrophilic",
+                                                    "BCH", "BC",  True, 0),
+    "Black_Carbon_hydrophobic"        : AeroIdent("Black_Carbon_hydrophobic",
+                                                    "BCN", "BC", False, 0),
+    "Sulfates"                        : AeroIdent("Sulfates",
+                                                    "SU", "SU",  True, 0),
+    "Nitrate_fine"                    : AeroIdent("Nitrate_fine",
+                                                    "NI1", "NI",  True, 1),
+    "Nitrate_coarse"                  : AeroIdent("Nitrate_coarse",
+                                                    "NI2", "NI",  True, 2),
+    "Ammonium"                        : AeroIdent("Ammonium",
+                                                    "AM", "AM",  True, 0),
+    "Biogenic_Secondary_Organic"      : AeroIdent("Biogenic_Secondary_Organic",
+                                                    "SOB", "OB",  True, 0),
+    "Anthropogenic_Secondary_Organic" : AeroIdent("Anthropogenic_Secondary_Organic",
+                                                    "SOA", "OA",  True, 0),
+    "Stratospheric_Sulfate"           : AeroIdent("Stratospheric_Sulfate",
+                                                    "SSU", "SSU",  False, 0),
+}
 
 
 @dataclass

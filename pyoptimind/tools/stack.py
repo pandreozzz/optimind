@@ -157,7 +157,7 @@ def get_stacked_aero(
     fld_ordered = np.ascontiguousarray(
         np.concatenate(
             [
-                fld[var].transpose(dimorder).values.flatten(order=flat_order)[:, None]
+                fld[var].transpose(*dimorder).values.flatten(order=flat_order)[:, None]
                 for var in varlist
             ],
             axis=-1,
@@ -169,7 +169,7 @@ def get_stacked_aero(
         np.ascontiguousarray(
             np.concatenate(
                 [
-                    fld[var].transpose(dimorder).values.flatten(order=flat_order)[:, None]
+                    fld[var].transpose(*dimorder).values.flatten(order=flat_order)[:, None]
                     for var in include_w
                 ],
                 axis=-1,

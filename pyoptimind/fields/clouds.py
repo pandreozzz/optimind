@@ -118,7 +118,7 @@ def get_cum_tau_c(ds, prior_ws=1, cc_thresh = 0.1, maxtauc : bool = False) -> xr
     return (np.float32((9/2*np.pi*0.8)**0.333)*\
             (ds["clwc"]/ds["cc"].where(ds["cc"] > cc_thresh, np.inf))**np.float32(0.666)*\
             ifs_ccns**np.float32(0.333)*\
-            ds["dp"]/(np.float32(9.8)*ds["rho_air"]**np.float32(0.333))*maxtauc_factor\
+            ds["dp"]/(np.float32(GCNST)*ds["rho_air"]**np.float32(0.333))*maxtauc_factor\
             ).cumsum(dim="lev")
 
 def get_rel_hum(pres_ml, sphum_ml, temp_ml):
@@ -363,11 +363,11 @@ def get_meteo_cloudy_slices(year : int, ifs_fields=None, cc_thresh : float = 0.8
         cloud_base_level = get_cloud_base_level(
             cum_tau_c.where(ThisCloudyLevel.is_cloud_thick_enough, 0.),
             frac_bot_tau_c=frac_bot_tau_c, nlevelsbelowcloudbase=0).compute()
-        # Convert Pa/s to m/s
+        # Convert Pa/s to m/s, opposite sign
         this_ifs_layer["w_clbase"] = (this_ifs["w"].rename(lev="levaux").isel(
             levaux=cloud_base_level,
             drop=True).where(total_mask).compute() /\
-                (this_ifs_layer["rho_air"]*9.8)).assign_attrs(units="m/s")
+                (-1.0*this_ifs_layer["rho_air"]*GCNST)).assign_attrs(units="m/s")
 
         print(this_ifs_layer["w_clbase"].__str__())
 

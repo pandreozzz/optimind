@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any, Dict, List
 
 import xarray as xr
@@ -12,13 +13,15 @@ import xarray as xr
 # Paths (computed from script location)
 # ---------------------------------------------------------------------
 SCRIPTDIR = os.path.dirname(os.path.realpath(__file__))
-GETLUTVAL_LIB = os.path.join(SCRIPTDIR, "../../libs/shared/fget_lutval.so")
-VERTINTERP_LIB = os.path.join(SCRIPTDIR, "../../libs/shared/fvertinterp.so")
+GETLUTVAL_LIB = Path(os.path.join(SCRIPTDIR, "../../libs/shared/fget_lutval.so")).resolve()
+VERTINTERP_LIB = Path(os.path.join(SCRIPTDIR, "../../libs/shared/fvertinterp.so")).resolve()
 
-ERA5_DATADIR = os.path.join(SCRIPTDIR, "../../data/era5")
-AERO_DATADIR = os.path.join(SCRIPTDIR, "../../data/cams")
-MODIS_DATADIR = os.path.join(SCRIPTDIR, "../../data/modis")
+ERA5_DATADIR = Path(os.path.join(SCRIPTDIR, "../../data/era5")).resolve()
+AERO_DATADIR = Path(os.path.join(SCRIPTDIR, "../../data/cams")).resolve()
+MODIS_DATADIR = Path(os.path.join(SCRIPTDIR, "../../data/modis")).resolve()
 
+PYRCELLUT_DATADIR = Path(os.path.join(SCRIPTDIR, "../../data/pyrcellut")).resolve()
+RECIPES_DEFDIR = Path(os.path.join(SCRIPTDIR, "../../setup_files/recipes")).resolve()
 # Temporary fields directory (ensure trailing separator via os.path.join)
 TMPFLDDIR = os.path.join(os.environ.get("TMPDIR", "/tmp"), "fields")
 os.makedirs(TMPFLDDIR, exist_ok=True)
@@ -163,6 +166,22 @@ def digest_config(config_path: str) -> None:
             f"overrides wspeed={CONFIGDICT['wspeed']}."
         )
         CONFIGDICT["wspeed"] = None
+
+    if not os.path.exists(CONFIGDICT["pyrcellutpath"]):
+        corrected_pyrcellutpath = os.path.join(PYRCELLUT_DATADIR, CONFIGDICT["pyrcellutpath"])
+        if os.path.exists(corrected_pyrcellutpath):
+            print(f"considering pyrcellutpath as relative to {PYRCELLUT_DATADIR}")
+            CONFIGDICT["pyrcellutpath"] = corrected_pyrcellutpath
+        else:
+            raise ValueError(f"Could not find {CONFIGDICT['pyrcellutpath']}")
+
+    if not os.path.exists(CONFIGDICT["ccn_recipe_file"]):
+        corrected_ccn_recipe_file = os.path.join(RECIPES_DEFDIR, CONFIGDICT["ccn_recipe_file"])
+        if os.path.exists(corrected_pyrcellutpath):
+            print(f"considering pyrcellutpath as relative to {RECIPES_DEFDIR}")
+            CONFIGDICT["ccn_recipe_file"] = corrected_ccn_recipe_file
+        else:
+            raise ValueError(f"Could not find {CONFIGDICT['ccn_recipe_file']}")
 
     print(f"Successfully read configuration from {config_path}")
 

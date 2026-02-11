@@ -17,7 +17,7 @@ Compile the shared Fortran libraries:
 ```
 % cd optimind/libs
 % for f in get_lutval vertinterp; do \
-gfortran -fPIC -fopenmp -shared -o shared/$f.so src/$f.f90 \
+gfortran -fPIC -fopenmp -shared -o shared/f$f.so src/$f.f90 \
 done
 % cd ../c_libs
 ```

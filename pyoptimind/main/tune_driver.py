@@ -105,7 +105,7 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
 
     # Initialize LUT
     LOGGER.info("Setting up pyrcel LUT from %s", CONFIGDICT["pyrcellutpath"])
-    setup_pyrcel_lut(CONFIGDICT["pyrcellutpath"])
+    setup_pyrcel_lut(os.path.join(config.PYRCELLUT_DATADIR, CONFIGDICT["pyrcellutpath"]))
     print_memory_status("After LUT setup")
     print_spill_status("After LUT setup")
 

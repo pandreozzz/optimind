@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Command‑line interface for cloud optical property LUT tuning."""
 
-from __future__ import annotations
-
 import argparse
 import logging
 from pathlib import Path
@@ -32,12 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Optimize aerosol size distributions using pyrcel and MODIS Nd data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Examples:\n"
-            "  # Process year with configuration config.json\n"
-            "  python run_tuning.py --year 2020 --config config.json --logdir /tmp/logdir\n"
-            "  # Show configuration options and quit\n"
-            "  python run_tuning.py --year 2020 --config config.json " +\
-                "--logdir /tmp/logdir --show-config\n"
+            "Examples:\ntbdone"
         ),
     )
     parser.add_argument(
@@ -107,7 +100,7 @@ def main() -> int:
         for key, value in sorted(CONFIGDICT.items()):
             print(f"{key:30} : {value}")
         return 0
-    
+
     # Lazy import to avoid heavy deps at import time
     from ..main.tune_driver import run_tuning_year
 

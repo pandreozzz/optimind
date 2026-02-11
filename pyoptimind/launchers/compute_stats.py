@@ -1,7 +1,5 @@
 """Aggregate tuning results across years and compute summary statistics."""
 
-from __future__ import annotations
-
 import argparse
 import glob
 import logging
