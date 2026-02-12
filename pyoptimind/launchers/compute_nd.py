@@ -1,7 +1,5 @@
 """Compute (diagnostic) Nd fields for a given year using tuned/prior parameters."""
 
-from __future__ import annotations
-
 import argparse
 import glob
 import os
@@ -19,7 +17,7 @@ from ..fields.ccn import compute_ccn_species
 from ..fields.clouds import get_meteo_cloudy_slices
 from ..fields.stage import copy_all_files
 from ..lut.setup import get_actual_lut_recipes, setup_pyrcel_lut
-from ..tools.aerinterp import get_interpolated_ccn
+from ..tools.aerinterp import get_interpolated_ccn, interpolate_aero
 from ..tools.lut import compute_nd
 from ..tools.stack import get_stacked_aero, get_stacked_lut
 
@@ -38,25 +36,25 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="Examples\ntbdone",
     )
     parser.add_argument(
-            "--year",
-            type=int,
-            help="Year to process"
-            )
+        "--year",
+        type=int,
+        help="Year to process"
+        )
     parser.add_argument(
-            "--config",
-            type=str,
-            help="Path to configuration JSON"
-            )
+        "--config",
+        type=str,
+        help="Path to configuration JSON"
+        )
     parser.add_argument(
-            "--logdir",
-            type=str,
-            help="Path to output/log directory"
-            )
+        "--logdir",
+        type=str,
+        help="Path to output/log directory"
+        )
     parser.add_argument(
-            "--num-procs",
-            type=int,
-            default=4,
-            help="Number of workers for the Dask local cluster")
+        "--num-procs",
+        type=int,
+        default=4,
+        help="Number of workers for the Dask local cluster")
     return parser
 
 
@@ -94,7 +92,7 @@ def _save_results(ds: xr.Dataset, outdir: str, year: int) -> None:
     else:
         ds.to_netcdf(results_file)
 
-def run_compute_nd_year(year, logdir) -> none:
+def run_compute_nd_year(year, logdir) -> None:
     """"Fetch tuning stats and compute nd for the year"""
     # Stage I/O
     copy_all_files(year)
@@ -173,6 +171,26 @@ def run_compute_nd_year(year, logdir) -> none:
             print(f"Setting {var} to 0 for no‑seasalt computations")
             this_ccn_mcon_noss[var] = this_ccn_mcon_noss[var] * 0
 
+
+    # Interpolated aerosols for diagnostics (monthly means)
+    print("Computing monthly mean aerosols for diagnostics...", flush=True)
+    tgt_pres = this_ifs_fixedlevel["p"] if this_ifs_fixedlevel is not None else this_ifs["p"]
+
+    aero_interp_vars = {}
+    for aerovar in all_aero_vars:
+        if aerovar == "pressure":
+            continue
+        aero_interp_vars[aerovar] = interpolate_aero(
+            this_aero[["pressure", aerovar]], tgt_pres,
+            aero_timeinterp=CONFIGDICT["aerofromclimatology"]
+        )[aerovar]* tgt_rhoa
+
+    this_aero_mcon_monthly = xr.Dataset(data_vars=aero_interp_vars)
+    this_aero_mcon_monthly = this_aero_mcon_monthly.groupby(
+        this_aero_mcon_monthly.time.dt.month
+        ).mean()
+    print("done!", flush=True)
+
     include_w_list = _select_include_w_list(CONFIGDICT["wspeed_type"])
     this_months = this_ifs.time.dt.month
 
@@ -204,7 +222,7 @@ def run_compute_nd_year(year, logdir) -> none:
                 nccn_over_mcon=this_nccn_over_mcon,
                 lutkin=CONFIGDICT["kinetically_limited"],
             )
-            print(str(this_activ_results))
+            #print(str(this_activ_results))
 
             if rainratio is not None:
                 this_activ_results["tot_nd"] = this_activ_results["tot_nd"] / (
@@ -223,12 +241,11 @@ def run_compute_nd_year(year, logdir) -> none:
                 },
                 **{
                     f"{stat_typ}{ccn_descr}tot_nd": this_activ_results["tot_nd"].groupby(this_months).mean(),
-                    f"{stat_typ}{ccn_descr}tot_nd13": (this_activ_results["tot_nd"] ** 0.333)
-                    .groupby(this_months)
-                    .mean(),
+                    f"{stat_typ}{ccn_descr}tot_nd13": (this_activ_results["tot_nd"] ** 0.333).groupby(this_months).mean(),
                 },
             }
 
+    print("Gathering all results...", flush=True)
     # Meteorological context and config echoes
     activ_results = {
         **activ_results,
@@ -270,6 +287,11 @@ def run_compute_nd_year(year, logdir) -> none:
             f"alpha_{stat_typ}": alpha_tuned[stat_typ] if CONFIGDICT["tune_rain_dispersion"] else None
             for stat_typ in ["mean", "median"]
         },
+        **{
+            f"{v}_mcon" : this_aero_mcon_monthly[v]
+            for v in all_aero_vars
+            if v != "pressure"
+        }
     }
 
     activ_results_ds = xr.Dataset(data_vars=activ_results).expand_dims(year=[year])

@@ -212,34 +212,32 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
     print(str(this_ccn_mcon))
 
     # Interpolated aerosols for diagnostics (monthly means)
-    print("Computing monthly mean aerosols for diagnostics...", flush=True)
-    tgt_pres = this_ifs_fixedlevel["p"] if this_ifs_fixedlevel is not None else this_ifs["p"]
+   # print("Computing monthly mean aerosols for diagnostics...", flush=True)
+   # tgt_pres = this_ifs_fixedlevel["p"] if this_ifs_fixedlevel is not None else this_ifs["p"]
 
-    aero_interp_vars = {}
-    for v in needed_aeros:
-        if v == "pressure":
-            continue
-        ds_interp = interpolate_aero(
-            this_aero[["pressure", v]], tgt_pres,
-            aero_timeinterp=CONFIGDICT["aerofromclimatology"]
-        )
-        aero_interp_vars[v] = ds_interp[v] * tgt_rhoa
+   # aero_interp_vars = {}
+   # for v in needed_aeros:
+   #     if v == "pressure":
+   #         continue
+   #     ds_interp = interpolate_aero(
+   #         this_aero[["pressure", v]], tgt_pres,
+   #         aero_timeinterp=CONFIGDICT["aerofromclimatology"]
+   #     )
+   #     aero_interp_vars[v] = ds_interp[v] * tgt_rhoa
 
-    this_aero_mcon_monthly = xr.Dataset(data_vars=aero_interp_vars)
-    this_aero_mcon_monthly = this_aero_mcon_monthly.groupby(
-        this_aero_mcon_monthly.time.dt.month
-        ).mean()
-    print("done!", flush=True)
+   # this_aero_mcon_monthly = xr.Dataset(data_vars=aero_interp_vars)
+   # this_aero_mcon_monthly = this_aero_mcon_monthly.groupby(
+   #     this_aero_mcon_monthly.time.dt.month
+   #     ).mean()
+   # print("done!", flush=True)
 
     # Reduce memory
     del this_ccn_mmr
-    del tgt_pres
+    #del tgt_pres
 
-    monthly_weights = (
-        this_ifs["is_warmliquid_cloud_2d"].groupby(this_ifs.time.dt.month).sum()
-        if CONFIGDICT["weightbycloudpresence"]
+    monthly_weights = this_ifs["is_warmliquid_cloud_2d"].groupby(this_ifs.time.dt.month).sum() \
+        if CONFIGDICT["weightbycloudpresence"] \
         else None
-    )
 
     # Wind-parametrized CCNs baseline performance
     this_ifs_nd13 = (
@@ -318,23 +316,23 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
         **launch_tuning.LOGDIC,
         **{
             "config_path": config_path,
-            "this_ifs": this_ifs.groupby(this_ifs.time.dt.month).mean(),
-            "this_ifs_fixedlevel": (
-                this_ifs_fixedlevel.groupby(this_ifs.time.dt.month).mean()
-                if this_ifs_fixedlevel is not None
-                else None
-            ),
-            "this_aero_mcon_monthly": this_aero_mcon_monthly,
+            #"this_ifs": this_ifs.groupby(this_ifs.time.dt.month).mean(),
+            #"this_ifs_fixedlevel": (
+            #    this_ifs_fixedlevel.groupby(this_ifs.time.dt.month).mean()
+            #    if this_ifs_fixedlevel is not None
+            #    else None
+            #),
+            #"this_aero_mcon_monthly": this_aero_mcon_monthly,
             "this_dates": this_ifs.time,
-            "this_ccn_mcon_monthly": this_ccn_mcon.groupby(this_ccn_mcon.time.dt.month).mean(),
+            #"this_ccn_mcon_monthly": this_ccn_mcon.groupby(this_ccn_mcon.time.dt.month).mean(),
             "prior_nccn_over_mcon": prior_ratio,
             "tuned_nccn_over_mcon": tuned_ratio,
             "species_to_tune": species_to_tune,
-            "prior_monthly_nd13": ini_nd13,
-            "tuned_monthly_nd13": tun_nd13,
-            "this_ifs_nd13": this_ifs_nd13,
-            "this_modis_nd13": this_modis_nd13,
-            "this_modis_nd13_errors": this_modis_nd13_errors,
+            #"prior_monthly_nd13": ini_nd13,
+            #"tuned_monthly_nd13": tun_nd13,
+            #"this_ifs_nd13": this_ifs_nd13,
+            #"this_modis_nd13": this_modis_nd13,
+            #"this_modis_nd13_errors": this_modis_nd13_errors,
             "grosvenor_tau_c_correction": CONFIGDICT["grosvenor_tau_c_correction"],
             "modisndrefsample": CONFIGDICT["modisndrefsample"],
             "modisndvalidthr": CONFIGDICT["modisndvalidthr"],
@@ -349,7 +347,7 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
             "ini_radii": ini_radii,
             "firstguess_radii": firstguess_radii,
             "Pyrcel_LUT": CONFIGDICT["pyrcellutpath"],
-            "actual_pyrcel_lut": actual_pyrcellut,
+            #"actual_pyrcel_lut": actual_pyrcellut,
             "w_speed": CONFIGDICT["wspeed"],
             "deardorff_scale": CONFIGDICT["deardorff_scale"],
             "AEROSPECS": config.THISLUTAERO,
