@@ -58,7 +58,6 @@ def get_available_memory() -> float:
     Returns:
         float: Estimated memory budget in megabytes
     """
-    safety_fraction = 0.75
     host_mem = psutil.virtual_memory()
     host_total = float(host_mem.total)
     host_available = float(host_mem.available)
@@ -69,9 +68,9 @@ def get_available_memory() -> float:
     effective_total: float
     limits = [v for v in (cgroup_limit, slurm_limit) if v is not None and v > 0]
     if limits:
-        effective_total = float(min(limits))
+        effective_total = float(min(limits))*0.95
     else:
-        effective_total = host_available if _in_slurm_job() else host_total
+        effective_total = host_available*0.95 if _in_slurm_job() else host_total*0.75
 
     return (effective_total * safety_fraction) / (1024**2)
 
