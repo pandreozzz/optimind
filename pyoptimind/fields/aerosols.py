@@ -71,7 +71,7 @@ def get_aero_fields(year, timesel = None, latmin = None, latmax = None) -> xr.Da
     this_prog = this_prog.rename(AERORENAMEDIC)
     if timesel is not None:
         this_prog = this_prog.sel(time=timesel)
-    this_prog = this_prog.chunk({"time":np.ceil(len(this_prog.time)/(32*CONFIGDICT["nprocs"]))})
+    #this_prog = this_prog.chunk({"time":np.ceil(len(this_prog.time)/(32*CONFIGDICT["nprocs"]))})
     print("Aerosol fields chunked successfully.")
 
     flds_dtype = this_prog["t"].dtype

@@ -273,7 +273,10 @@ def get_meteo_cloudy_slices(year : int, ifs_fields=None, cc_thresh : float = 0.8
     # 3D pressure, rho_air, level pressure difference
     print("Starting computations. Reading data from disk might take a while...", flush=True)
     time0 = time()
-    this_ifs.persist()
+    # Persist returns a new Dataset backed by distributed Futures.
+    # Keep the returned object; otherwise subsequent computations can resubmit
+    # overlapping graphs with identical keys but different run specs.
+    this_ifs = this_ifs.persist()
     wait(this_ifs)
     time1 = time()
     print(f"Loaded. ({time1-time0:.2f}s)")
