@@ -254,7 +254,7 @@ def get_meteo_cloudy_slices(year : int, ifs_fields=None, cc_thresh : float = 0.8
     print("Slicing data...", flush=True)
     this_ifs =  ifs_fields[["sp"]+fld_list+levdefs_list].transpose(
         ..., "lat", "lon").sortby("lat", ascending=False).sel(lat=latslice, lon=lonsel)
-    this_ifs = this_ifs.chunk({"time": np.ceil(len(this_ifs.time)/(32*CONFIGDICT["nprocs"]))})
+    #this_ifs = this_ifs.chunk({"time": np.ceil(len(this_ifs.time)/(32*CONFIGDICT["nprocs"]))})
     #print(this_ifs.__str__())
 
     print(f"Model data: {this_ifs.nbytes/(1024**3):.1f}GB.", flush=True)
