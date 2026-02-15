@@ -33,7 +33,7 @@ def aero_sfc_namelike(year, grid):
     return f"*_meteo_{year}_{grid}_{CONFIGDICT['hourly']}_sfc"
 
 
-def copy_all_files(year):
+def copy_all_files(year, copy_modis_nd = True, meteo_year = None) -> None:
     """
     Copy or symlink input data files to working directory.
 
@@ -89,19 +89,19 @@ def copy_all_files(year):
         #print(cmd2)
         #os.system(cmd2)
 
-    print("Copying ERA5 fields...")
-
+    meteo_year = meteo_year if meteo_year is not None else year
+    print(f"Copying ERA5 fields using meteo_year {meteo_year}...")
     era5_ml_file = os.path.join(
         ERA5_DATADIR,
-        f"era5_{year}_{CONFIGDICT['gridspec']}_{CONFIGDICT['hourly']}_{ERA5MLFILESIGN}{dataext}"
+        f"era5_{meteo_year}_{CONFIGDICT['gridspec']}_{CONFIGDICT['hourly']}_{ERA5MLFILESIGN}{dataext}"
         )
     era5_tend_ml_file = os.path.join(
         ERA5_DATADIR,
-        f"era5_{year}_{CONFIGDICT['gridspec']}_{CONFIGDICT['hourly']}_{ERA5TENDFILESIGN}{dataext}"
+        f"era5_{meteo_year}_{CONFIGDICT['gridspec']}_{CONFIGDICT['hourly']}_{ERA5TENDFILESIGN}{dataext}"
         )
     era5_sfc_file = os.path.join(
         ERA5_DATADIR,
-        f"era5_{year}_{CONFIGDICT['gridspec']}_{CONFIGDICT['hourly']}_{ERA5SFCFILESIGN}{dataext}"
+        f"era5_{meteo_year}_{CONFIGDICT['gridspec']}_{CONFIGDICT['hourly']}_{ERA5SFCFILESIGN}{dataext}"
         )
 
     for file_check in [era5_ml_file, era5_sfc_file]:
@@ -119,6 +119,9 @@ def copy_all_files(year):
     cmd3 = f"{cpy_cmd} '{era5_sfc_file}' '{TMPFLDDIR}'/"
     print(cmd3)
     os.system(cmd3)
+
+    if not copy_modis_nd:
+        return
 
     print("Copying MODIS fields...")
     modis_nd_file = os.path.join(
