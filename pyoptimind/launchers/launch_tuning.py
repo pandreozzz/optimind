@@ -8,7 +8,7 @@ from pathlib import Path
 from dask.distributed import Client
 
 from ..main.config import CONFIGDICT, digest_config
-from ..utils.dask import optimize_dask_for_memory
+from ..utils.daskctrl import optimize_dask_for_memory
 from ..utils.memory import get_available_memory
 
 # ---------------------------------------------------------------------
@@ -113,6 +113,8 @@ def main() -> int:
         mem_per_worker_mb = max(totmem_mbytes * 0.98 / max(args.num_procs, 1), 256.0)
 
         with Client(n_workers=args.num_procs, memory_limit=f"{mem_per_worker_mb:.2f}MB"):
+            # Temporary
+            CONFIGDICT["nprocs"] = args.num_procs
             run_tuning_year(args.year, str(config_path), str(logdir_path))
 
     LOGGER.info("All years processed successfully!")
