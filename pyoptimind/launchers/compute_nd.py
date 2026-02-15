@@ -22,7 +22,7 @@ from ..tools.lut import compute_nd
 from ..tools.stack import get_stacked_aero, get_stacked_lut
 
 from ..utils.memory import get_available_memory
-from ..utils.dask import optimize_dask_for_memory
+from ..utils.daskctrl import optimize_dask_for_memory
 
 # Include Dust diagnostics
 ADDIT_AEROVAR = ["Mineral_Dust_bin1", "Mineral_Dust_bin2"]
