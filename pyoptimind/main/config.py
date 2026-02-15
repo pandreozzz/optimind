@@ -18,6 +18,7 @@ VERTINTERP_LIB = Path(os.path.join(SCRIPTDIR, "../../libs/shared/fvertinterp.so"
 
 ERA5_DATADIR = Path(os.path.join(SCRIPTDIR, "../../data/era5")).resolve()
 AERO_DATADIR = Path(os.path.join(SCRIPTDIR, "../../data/cams")).resolve()
+CLIM_DATADIR =  Path(os.path.join(SCRIPTDIR, "../../data/cams_clim")).resolve()
 MODIS_DATADIR = Path(os.path.join(SCRIPTDIR, "../../data/modis")).resolve()
 
 PYRCELLUT_DATADIR = Path(os.path.join(SCRIPTDIR, "../../data/pyrcellut")).resolve()
@@ -96,10 +97,10 @@ ERA5TENDFILESIGN = "tend_ml"
 ERA5SFCFILESIGN = "sfc"
 COPYFIELDS = False
 
-# IO defaults
+# IO defaults  - use chunking of zarr 
 OPENDS_ZARR_KWARGS: Dict[str, Any] = {
     "engine": "zarr",
-    "chunks": {"time": "auto"},
+    "chunks": {},
     "consolidated": False,
 }
 SSRH80 = True
@@ -166,6 +167,15 @@ def digest_config(config_path: str) -> None:
             f"overrides wspeed={CONFIGDICT['wspeed']}."
         )
         CONFIGDICT["wspeed"] = None
+
+    if CONFIGDICT["aerofromclimatology"]:
+        if not os.path.exists(CONFIGDICT["aerosolclimfile"]):
+            corrected_climpath = os.path.join(CLIM_DATADIR, CONFIGDICT["aerosolclimfile"])
+            if os.path.exists(corrected_climpath):
+                print(f"considering aerosolclimfile as relative to {CLIM_DATADIR}")
+                CONFIGDICT["aerosolclimfile"] = corrected_climpath
+            else:
+                raise ValueError(f"Could not find {CONFIGDICT['aerosolclimfile']}")
 
     if not os.path.exists(CONFIGDICT["pyrcellutpath"]):
         corrected_pyrcellutpath = os.path.join(PYRCELLUT_DATADIR, CONFIGDICT["pyrcellutpath"])

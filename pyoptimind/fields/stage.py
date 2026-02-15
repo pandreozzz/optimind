@@ -2,7 +2,7 @@
 import os
 from glob import glob
 from ..main.config import CONFIGDICT, TMPFLDDIR, COPYFIELDS
-from ..main.config import ERA5_DATADIR, AERO_DATADIR, MODIS_DATADIR
+from ..main.config import ERA5_DATADIR, AERO_DATADIR, CLIM_DATADIR, MODIS_DATADIR
 from ..main.config import ERA5MLFILESIGN, ERA5TENDFILESIGN, ERA5SFCFILESIGN
 
 def aero_pl_namelike(year, grid):
