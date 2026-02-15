@@ -141,8 +141,10 @@ CONFIG_BASEDIR="${CONFIG_PATH%/*}" #where the CONFIG_FILE is located
 TUNE_TYPE="${CONFIG_BASEDIR##*/}"
 
 # Setup logging
-LOGDIR=$(realpath "${BASE_LOGDIR}/${TUNE_TYPE}/logs_${CONFIG_NAME}")
+LOGDIR="${BASE_LOGDIR}/${TUNE_TYPE}/logs_${CONFIG_NAME}"
 mkdir -p "$LOGDIR"
+
+LOGDIR=$(realpath $LOGDIR)
 
 # Create temporary work directory
 TMP_DIRECTORY=$(mktemp -d "${WORKDIR}/tune_lut_XXXXXXXXXX")
