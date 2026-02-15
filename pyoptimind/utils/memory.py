@@ -72,7 +72,7 @@ def get_available_memory() -> float:
     else:
         effective_total = host_available*0.95 if _in_slurm_job() else host_total*0.75
 
-    return (effective_total * safety_fraction) / (1024**2)
+    return effective_total / (1024**2)
 
 
 def _in_slurm_job() -> bool:
