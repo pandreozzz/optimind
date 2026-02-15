@@ -129,12 +129,15 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
     this_ifs, this_ifs_fixedlevel = get_meteo_cloudy_slices(
         year,
         cc_thresh=CONFIGDICT["cldetect_cc_threshold"],
+        hcc_max=CONFIGDICT["cldetect_hcc_threshold"],
         t_thresh=CONFIGDICT["cldetect_t_threshold"],
         iwr_thresh=CONFIGDICT["cldetect_iwr_threshold"],
         use_grosvenor_tau_c=CONFIGDICT["grosvenor_tau_c_correction"],
         thresh_valid_monthly=CONFIGDICT["cldetect_thresh_valid_monthly"],
         latmin=min(CONFIGDICT["latitudes_minmax"]),
         latmax=max(CONFIGDICT["latitudes_minmax"]),
+        lonmin=min(CONFIGDICT["longitudes_minmax"]),
+        lonmax=max(CONFIGDICT["longitudes_minmax"]),
     )
     frac_cloudy_pts = (~np.isnan(this_ifs["p"])).mean().values
     print(f"Fraction of cloudy points: {float(frac_cloudy_pts) * 100:.02f}%")

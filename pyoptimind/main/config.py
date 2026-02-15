@@ -70,6 +70,7 @@ CONFIGDICT: Dict[str, Any] = {
     "samplespreads": ["Q06", "G18", "BR17"],
     "modisndbiascorrection": False,
     "cldetect_cc_threshold": 0.8,
+    "cldetect_hcc_threshold": 1.0,
     "cldetect_t_threshold": 268,
     "cldetect_iwr_threshold": 0.05,
     "cldetect_thresh_valid_monthly": 0.1,

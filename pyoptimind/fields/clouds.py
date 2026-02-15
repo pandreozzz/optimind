@@ -209,59 +209,111 @@ def get_gros_aerolevel(cum_tau_c):
     is_layer_deep_enough = (cum_tau_c.fillna(0) >= tot_tau_c.clip(max=grosv_tau_depth(tot_tau_c)))
     return cum_tau_c.where(is_layer_deep_enough, np.inf).argmin(
         dim="lev", skipna=True).expand_dims(lev=[-1], axis=-1).astype(np.int16)
+def _prepare_ifs_fields(
+    ifs_fields: xr.Dataset,
+    latmin: float = -90,
+    latmax: float = 90,
+    lonmin: float = 0,
+    lonmax: float = 360,
+) -> xr.Dataset:
+    """Prepare IFS fields for cloudy pixel selection.
 
-def get_meteo_cloudy_slices(year : int, ifs_fields=None, cc_thresh : float = 0.8,
-                            t_thresh : float = 268, iwr_thresh : float = 1.e-2,
-                            prior_ws : float = 10, min_tot_tau_c : float = 4,
-                            min_top_tau_c : float = 2.0, maxtauc : bool = False,
-                            use_grosvenor_tau_c : bool = False, frac_bot_tau_c : float = 0.95,
-                            thresh_valid_monthly : float = 0.1,
-                            latmin : float = -90, latmax : float = 90):
+    This must return the prepared dataset; otherwise the caller will keep
+    operating on the full, unsliced ERA5 dataset, which can explode memory
+    usage once persisted.
     """
-    Main driver for cloud pixel selection
-    """
-
-
-    if ifs_fields is None:
-        ifs_fields = get_ifs_fields(year=year)
-
-    fld_list_3d = ["t", "q", "cc", "w",
-                   "clwc", "ciwc", "crwc",
-                   "avg_ttlwr", "avg_ttswr", "avg_ttpm"]
-    fld_list_2d = ["tcc", "tclw", "tcrw", "tciw", "lsm", "10u", "10v", \
-                   "2t", "sp", "blh", "ie", "ishf", "skt"]
-    fld_list = fld_list_3d + fld_list_2d
-    fld_list = [f for f in fld_list if f in ifs_fields.variables]
-    new_fld_list = ["p", "rho_air", "dp"]
-    levdefs_list = ["hyam", "hybm", "hyai", "hybi"]
-
 
     print("Setting up latitude and longitude selection", flush=True)
-    latslice = slice(latmax,latmin)
+    latslice = slice(latmax, latmin)
 
-    lonmin = min(CONFIGDICT["longitudes_minmax"])
-    lonmax = max(CONFIGDICT["longitudes_minmax"])
-
-    all_lons = ifs_fields['lon'].load()
+    # Load lon coordinate eagerly (tiny) to keep selection graph small.
+    all_lons = ifs_fields["lon"].load()
     if lonmin < lonmax:
         lonsel = all_lons.sel(lon=slice(lonmin, lonmax))
     else:
         lonsel = xr.concat(
-            [all_lons.where(all_lons >= lonmin, drop=True),
-            all_lons.where(all_lons <= lonmax, drop=True)],
-            dim="lon")
+            [
+                all_lons.where(all_lons >= lonmin, drop=True),
+                all_lons.where(all_lons <= lonmax, drop=True),
+            ],
+            dim="lon",
+        )
 
     print("Slicing data...", flush=True)
-    this_ifs =  ifs_fields[["sp"]+fld_list+levdefs_list].transpose(
-        ..., "lat", "lon").sortby("lat", ascending=False).sel(lat=latslice, lon=lonsel)
-    #this_ifs = this_ifs.chunk({"time": np.ceil(len(this_ifs.time)/(32*CONFIGDICT["nprocs"]))})
-    #print(this_ifs.__str__())
+    this_ifs = (
+        ifs_fields.transpose(..., "lat", "lon")
+        .sortby("lat", ascending=False)
+        .sel(lat=latslice, lon=lonsel)
+    )
 
-    print(f"Model data: {this_ifs.nbytes/(1024**3):.1f}GB.", flush=True)
-    del ifs_fields
+    # Important for memory: make time chunks small enough before persist().
+    # This mirrors the pre-refactor logic (commit b3684b4...).
+    if "time" in this_ifs.dims:
+        nprocs = int(CONFIGDICT.get("nprocs", 1) or 1)
+        denom = max(1, 64 * nprocs)
+        time_chunk = max(1, int(np.ceil(len(this_ifs.time) / denom)))
+        this_ifs = this_ifs.chunk({"time": time_chunk})
+
+    # Keep model-level dimension as a single chunk.
+    # This substantially reduces task-graph size for ops like cumsum(dim="lev").
+    if "lev" in this_ifs.dims:
+        this_ifs = this_ifs.chunk({"lev": -1})
+
+    # Rechunk lat/lon after spatial selection to keep graph size reasonable.
+    spatial_chunks: dict[str, int] = {}
+    if "lat" in this_ifs.dims:
+        spatial_chunks["lat"] = min(64, int(this_ifs.sizes["lat"]))
+    if "lon" in this_ifs.dims:
+        spatial_chunks["lon"] = min(64, int(this_ifs.sizes["lon"]))
+    if spatial_chunks:
+        this_ifs = this_ifs.chunk(spatial_chunks)
+
+    # print(this_ifs.__str__())
+
+    print(f"Model data (selected): {this_ifs.nbytes/(1024**3):.1f}GB.", flush=True)
 
     gc.collect()
     trim_memory()
+
+    return this_ifs
+
+def get_meteo_cloudy_slices(year : int, ifs_fields = None, cc_thresh : float = 0.1,
+                            t_thresh : float = 268, iwr_thresh : float = 1.e-2,
+                            hcc_max : float = 1.0,
+                            prior_ws : float = 10, min_tot_tau_c : float = 4,
+                            min_top_tau_c : float = 2.0, maxtauc : bool = True,
+                            use_grosvenor_tau_c : bool = False, frac_bot_tau_c : float = 0.95,
+                            thresh_valid_monthly : float = 0.1,
+                            latmin : float = -90, latmax : float = 90,
+                            lonmin : float = 0, lonmax : float = 360):
+    """
+    Main driver for cloud pixel selection
+    """
+    if ifs_fields is None:
+        ifs_fields = get_ifs_fields(year=year)
+
+    fld_list_3d_test = ["t", "clwc", "ciwc"]
+    fld_list_3d = ["q", "cc", "w",
+                   "crwc",
+                   "avg_ttlwr", "avg_ttswr", "avg_ttpm"]
+    fld_list_2d = ["tcc", "hcc", "mcc", "lcc", \
+                   "tclw", "tcrw", "tciw", "lsm", "10u", "10v", \
+                   "2t", "sp", "blh", "ie", "ishf", "skt"]
+    fld_list = fld_list_3d_test + fld_list_3d + fld_list_2d
+    fld_list = [f for f in fld_list if f in ifs_fields.variables]
+    new_fld_list = ["p", "rho_air", "dp"]
+    levdefs_list = ["hyam", "hybm", "hyai", "hybi"]
+
+    ifs_fields_varsel = ["sp"]+fld_list+levdefs_list
+    this_ifs = _prepare_ifs_fields(
+        ifs_fields[ifs_fields_varsel],
+        latmin=latmin,
+        latmax=latmax,
+        lonmin=lonmin,
+        lonmax=lonmax,
+    )
+    del ifs_fields
+
     #CLIENT.run(trim_memory)
 
     # Restrict model data on cos sza
@@ -269,6 +321,9 @@ def get_meteo_cloudy_slices(year : int, ifs_fields=None, cc_thresh : float = 0.8
 
     # Restrict model data on exact local time
     localtime_mask = get_localtime_mask(time=this_ifs.time, lon=this_ifs.lon)
+
+    # Mask out areas with high cloud cover exceeding hcc_max
+    hcc_mask = this_ifs["hcc"] <= hcc_max
 
     # 3D pressure, rho_air, level pressure difference
     print("Starting computations. Reading data from disk might take a while...", flush=True)
@@ -323,7 +378,7 @@ def get_meteo_cloudy_slices(year : int, ifs_fields=None, cc_thresh : float = 0.8
         lev=ThisCloudyLevel.representative_cloudy_level.rename(lev="lev_aux"),
         drop=True).where(
             ThisCloudyLevel.is_cloud_thick_enough
-            ).drop_vars("lev_aux").rename_dims(lev_aux="lev").persist()
+            ).squeeze(dim="lev_aux", drop=True).persist()
     wait(this_ifs_layer)
     print(f"Representative cloud level extracted. ({time()-time0:.2f}s)",
           flush=True)
@@ -332,8 +387,8 @@ def get_meteo_cloudy_slices(year : int, ifs_fields=None, cc_thresh : float = 0.8
     # gc.collect()
     # trim_memory()
 
-    this_ifs_layer["repr_cloud_lev"] = ThisCloudyLevel.representative_cloudy_level
-    this_ifs_layer["tot_tau_c"] = cum_tau_c.isel(lev=-1)
+    this_ifs_layer["repr_cloud_lev"] = ThisCloudyLevel.representative_cloudy_level.squeeze(dim="lev", drop=True)
+    this_ifs_layer["tot_tau_c"] = cum_tau_c.isel(lev=-1, drop=True)
 
     # Cloud top is warm and liquid
     is_warm_cloud_2d = (this_ifs_layer["t"] > t_thresh).compute()
@@ -351,13 +406,14 @@ def get_meteo_cloudy_slices(year : int, ifs_fields=None, cc_thresh : float = 0.8
                 is_warmliquid_cloud_2d.loc[is_warmliquid_cloud_2d.time.dt.month == m] & \
                 is_enough_monthly_vals.sel(month=m)
 
-    total_mask = is_warmliquid_cloud_2d & (cos_sza_mask & localtime_mask)
+    total_mask = is_warmliquid_cloud_2d & cos_sza_mask & localtime_mask & hcc_mask
     this_ifs_layer = this_ifs_layer.where(total_mask)
     this_ifs_layer["is_warm_cloud_2d"] = is_warm_cloud_2d
     this_ifs_layer["is_liquid_cloud_2d"] = is_liquid_cloud_2d
     this_ifs_layer["is_warmliquid_cloud_2d"] = is_warmliquid_cloud_2d
     this_ifs_layer["cos_sza_mask"] = cos_sza_mask
     this_ifs_layer["localtime_mask"] = localtime_mask
+    this_ifs_layer["hcc_mask"] = hcc_mask
     this_ifs_layer["total_mask"] = total_mask
     del is_warmliquid_cloud_2d, cos_sza_mask, localtime_mask
 

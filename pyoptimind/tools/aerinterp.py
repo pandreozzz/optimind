@@ -258,6 +258,8 @@ def interpolate_aero(
             this_tmp_src = tmp_src
 
         this_tmp_dst = tmp_dst.sel(time=timeslice)
+        if intp_dim_name not in this_tmp_dst.dims:
+            this_tmp_dst = this_tmp_dst.expand_dims(intp_dim_name)
 
         tmp_stacktools = tools_to_stack_xarrays(
             src_arr=this_tmp_src,
@@ -368,7 +370,7 @@ def interpolate_aero(
             interpospecs.append(this_aero_field_intp)
 
         interpolaeros.append(
-            xr.concat(interpospecs, dim="time").rename(spec)
+            xr.concat(interpospecs, dim="time").rename(spec).squeeze(dim=intp_dim_name)
             )
 
     return xr.merge(interpolaeros)
@@ -431,7 +433,7 @@ def get_interpolated_ccn(
                 aero_timeinterp=CONFIGDICT["aerofromclimatology"],
             )
         )
-        dimorder = [d for d in this_ifs["p"].dims if d in ccn_mcon.dims]  # type: ignore[index]
+        dimorder = [d for d in this_ifs["p"].dims if d in ccn_mcon.dims] # type: ignore[index]
         ccn_mcon = ccn_mcon.transpose(*dimorder)
 
     # Preserve the final species order (in-cloud first to match call sites)

@@ -40,6 +40,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Year to process"
         )
+    # Optional argument
+    parser.add_argument(
+        "--meteo-year",
+        type=int,
+        default=None,
+        help="Meteorology comes from a different year"
+        )
     parser.add_argument(
         "--config",
         type=str,
@@ -92,18 +99,19 @@ def _save_results(ds: xr.Dataset, outdir: str, year: int) -> None:
     else:
         ds.to_netcdf(results_file)
 
-def run_compute_nd_year(year, logdir) -> None:
+def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
     """"Fetch tuning stats and compute nd for the year"""
     # Stage I/O
-    copy_all_files(year)
+    copy_all_files(year, meteo_year=meteo_year)
 
     tune_stats = _load_latest_tune_stats(logdir)
 
     # Meteorology (cloudy slices)
     print("Getting era5 cloudy points...", flush=True)
     this_ifs, this_ifs_fixedlevel = get_meteo_cloudy_slices(
-        year,
+        meteo_year if meteo_year is not None else year,
         cc_thresh=CONFIGDICT["cldetect_cc_threshold"],
+        hcc_max=CONFIGDICT["cldetect_hcc_threshold"],
         t_thresh=CONFIGDICT["cldetect_t_threshold"],
         iwr_thresh=CONFIGDICT["cldetect_iwr_threshold"],
         prior_ws=tune_stats["prior_ws"],
@@ -114,6 +122,15 @@ def run_compute_nd_year(year, logdir) -> None:
         latmin=-90,
         latmax=90,
     )
+
+    # Change year in time dimension for this_ifs, this_ifs_fixedlevel
+    # to match the aerosol year
+    if meteo_year is not None:
+        new_time = this_ifs["time"].to_index().map(lambda t: t.replace(year=year))
+        this_ifs = this_ifs.assign_coords(time=new_time)
+        if this_ifs_fixedlevel is not None:
+            this_ifs_fixedlevel = this_ifs_fixedlevel.assign_coords(time=new_time)
+
     frac_cloudy_pts = (~np.isnan(this_ifs["p"])).mean().values
     print(f"Fraction of cloudy points: {float(frac_cloudy_pts) * 100:.02f}%")
     print(str(this_ifs), flush=True)
@@ -313,7 +330,7 @@ def main() -> int:
         mem_per_worker_mb = max(totmem_mbytes * 0.98 / max(args.num_procs, 1), 256.0)
 
         with Client(n_workers=args.num_procs, memory_limit=f"{mem_per_worker_mb:.2f}MB"):
-            run_compute_nd_year(args.year, args.logdir)
+            run_compute_nd_year(args.year, args.logdir, meteo_year=args.meteo_year)
 
     return 0
 
