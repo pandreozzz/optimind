@@ -224,6 +224,7 @@ def interpolate_aero(
     dst_pres: xr.DataArray,
     aero_timeinterp: bool = True,
     intp_dim_name: str = "lev",
+    intp_dim_singleton: bool = True,
 ) -> xr.Dataset:
     """Interpolate aerosol fields to target pressure levels (and optionally in time)."""
 
@@ -234,6 +235,9 @@ def interpolate_aero(
 
     # Optionally time-interpolate climatology to only the unique target dates
     if aero_timeinterp:
+        min_time_str = str(tmp_dst.time.min().values.astype("datetime64[ns]"))[:16]
+        max_time_str = str(tmp_dst.time.max().values.astype("datetime64[ns]"))[:16]
+        print(f"Interpolating aerosols in time from {min_time_str} to {max_time_str}...")
         unique_dates_arr = np.unique(tmp_dst.time.dt.date)
         unique_dates = xr.DataArray(data=unique_dates_arr, dims=["time"])
         tmp_src = interpolate_monthly_clim(tmp_src, unique_dates.astype("datetime64[ns]")).compute()
@@ -258,8 +262,15 @@ def interpolate_aero(
             this_tmp_src = tmp_src
 
         this_tmp_dst = tmp_dst.sel(time=timeslice)
-        if intp_dim_name not in this_tmp_dst.dims:
-            this_tmp_dst = this_tmp_dst.expand_dims(intp_dim_name)
+        if intp_dim_name in this_tmp_dst.dims:
+            if (intp_dim_singleton and this_tmp_dst.sizes[intp_dim_name] != 1):
+                raise ValueError(
+                    f"{intp_dim_name} expected singleton, got size {this_tmp_dst.sizes[intp_dim_name]}"
+                )
+        else:
+            if intp_dim_name in this_tmp_dst.coords or intp_dim_name in this_tmp_dst.variables:
+                this_tmp_dst = this_tmp_dst.drop_vars(intp_dim_name)
+            this_tmp_dst = this_tmp_dst.expand_dims({intp_dim_name: [0]})
 
         tmp_stacktools = tools_to_stack_xarrays(
             src_arr=this_tmp_src,

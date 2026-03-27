@@ -115,7 +115,11 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
 
     # MODIS data
     print("Loading MODIS Nd data...", flush=True)
-    modis_nd_raw = get_modis_data(year)
+    modis_nd_raw = get_modis_data(year,
+                                  latmin=min(CONFIGDICT["latitudes_minmax"]),
+                                  latmax=max(CONFIGDICT["latitudes_minmax"]),
+                                  lonwest=CONFIGDICT["longitudes_westeast"][0],
+                                  loneast=CONFIGDICT["longitudes_westeast"][1])
     this_modis_nd13, this_modis_nd13_errors = get_modis_errors(modis_nd_raw)
     this_modis_nd13 = this_modis_nd13.rename("modis_nd13")
     this_modis_nd13_errors = this_modis_nd13_errors.rename("modis_nd13_errors")
@@ -136,8 +140,10 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
         thresh_valid_monthly=CONFIGDICT["cldetect_thresh_valid_monthly"],
         latmin=min(CONFIGDICT["latitudes_minmax"]),
         latmax=max(CONFIGDICT["latitudes_minmax"]),
-        lonmin=min(CONFIGDICT["longitudes_minmax"]),
-        lonmax=max(CONFIGDICT["longitudes_minmax"]),
+        lonwest=CONFIGDICT["longitudes_westeast"][0],
+        loneast=CONFIGDICT["longitudes_westeast"][1],
+        cos_sza_minmax=CONFIGDICT["cos_sza_minmax"],
+        localhour_minmax=CONFIGDICT["localhour_minmax"]
     )
     frac_cloudy_pts = (~np.isnan(this_ifs["p"])).mean().values
     print(f"Fraction of cloudy points: {float(frac_cloudy_pts) * 100:.02f}%")
@@ -154,9 +160,19 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
     trim_memory()
 
     if CONFIGDICT["aerofromclimatology"]:
-        this_aero = get_aero_fromclim(year=year)
+        this_aero = get_aero_fromclim(year=year,
+                                      latmin=min(CONFIGDICT["latitudes_minmax"]),
+                                      latmax=max(CONFIGDICT["latitudes_minmax"]),
+                                      lonwest=CONFIGDICT["longitudes_westeast"][0],
+                                      loneast=CONFIGDICT["longitudes_westeast"][1],
+                                    )
     else:
-        this_aero = get_aero_fields(year, timesel=this_ifs.time.values)
+        this_aero = get_aero_fields(year, timesel=this_ifs.time.values,
+                                    latmin=min(CONFIGDICT["latitudes_minmax"]),
+                                    latmax=max(CONFIGDICT["latitudes_minmax"]),
+                                    lonwest=CONFIGDICT["longitudes_westeast"][0],
+                                    loneast=CONFIGDICT["longitudes_westeast"][1],
+                                    )
 
     # Align recipes and aerosol fields
     (
@@ -238,9 +254,12 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
     del this_ccn_mmr
     #del tgt_pres
 
-    monthly_weights = this_ifs["is_warmliquid_cloud_2d"].groupby(this_ifs.time.dt.month).sum() \
-        if CONFIGDICT["weightbycloudpresence"] \
-        else None
+    # monthly weights are given by average max(mcc, lcc) if requested, otherwise None
+    monthly_weights = xr.concat(
+        [this_ifs["mcc"].expand_dims(cctype=["mcc"]), this_ifs["lcc"].expand_dims(cctype=["lcc"])],
+        dim="cctype"
+        ).max(dim="cctype").groupby(this_ifs.time.dt.month).mean().compute() \
+            if CONFIGDICT["weightbycloudpresence"] else None
 
     # Wind-parametrized CCNs baseline performance
     this_ifs_nd13 = (
@@ -370,6 +389,14 @@ def run_tuning_year(year: int, config_path: str, logdir_path: str) -> None:
     with open(logfile, "wb") as fopen:
         print(f"Saving logs to {logfile}...", flush=True)
         pickle.dump(launch_tuning.LOGDIC, fopen)
+
+#    mask_file = xr.Dataset(
+#        data_vars={
+#            "total_mask": this_ifs["total_mask"],
+#            "repr_cloud_lev": this_ifs["repr_cloud_lev"].astype(np.int8),
+#            "monthly_weights": monthly_weights,
+#            },
+#    )
 
     LOGGER.info("Completed tuning for year %s", year)
 

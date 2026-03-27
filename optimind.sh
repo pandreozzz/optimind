@@ -15,9 +15,12 @@
 #   -z, --zero-year YEAR      Base year for array indexing (default: 2000)
 #   -i, --ini-year N          Initial year index (default: 3)
 #   -e, --end-year N          End year index (default: 20)
+#   -y, --meteo-year YEAR     Use a different year for meteo data
 #   -t, --no-tune             Skip tuning step
 #   -s, --no-stats            Skip statistics computation
 #   -n, --no-nd               Skip ND computation
+#   -ndtt, --all-times-nd     Save computed nd for all timesteps
+#   -a, --array-chunk-size N    Number of jobs to run in parallel for array jobs (default: 99)
 #   -x, --noexec
 #   -h, --help                Show this help message
 #
@@ -56,6 +59,12 @@ NUM_PROCS=8 #6 4
 TUNE_SWITCH=true
 STATS_SWITCH=true
 ND_SWITCH=true
+
+# All times nd
+NDTT_REQUIRED=false
+
+# Array job chunk size
+ARRAY_CHUNK_SIZE=99
 
 CONFIG_PATH=""
 POSITIONAL_ARGS=()
@@ -99,6 +108,10 @@ while [[ $# -gt 0 ]]; do
       END_YEAR="$2"
       shift 2
       ;;
+    -y|--meteo-year)
+      METEO_YEAR="$2"
+      shift 2
+      ;;
     -t|--no-tune)
       TUNE_SWITCH=false
       shift
@@ -110,6 +123,18 @@ while [[ $# -gt 0 ]]; do
     -n|--no-nd)
       ND_SWITCH=false
       shift
+      ;;
+    -ndtt|--all-times-nd)
+      NDTT_REQUIRED=true
+      shift
+      ;;
+    -sf|--stats-file)
+      STATS_FILE="$2"
+      shift 2
+      ;;
+    -a|--array-chunk-size)
+      ARRAY_CHUNK_SIZE="$2"
+      shift 2
       ;;
     *)
       POSITIONAL_ARGS+=("$1")
@@ -173,6 +198,7 @@ echo "Steps to perform:"
 echo "   Tuning: $([ "$TUNE_SWITCH" = true ] && echo 'yes' || echo 'no')"
 echo "   Statistics: $([ "$STATS_SWITCH" = true ] && echo 'yes' || echo 'no')"
 echo "   ND Computation: $([ "$ND_SWITCH" = true ] && echo 'yes' || echo 'no')"
+echo "   Computed Nd saved for all times: $([ "$NDTT_REQUIRED" = true ] && echo 'yes' || echo 'no')"
 echo ""
 echo "Temporary Directory: $TMP_DIRECTORY"
 echo "Log Directory: $LOGDIR"
@@ -210,6 +236,21 @@ cat << EOF > "$WRAPPER_STATS"
 set -euo pipefail
 $PYTHON_EXEC -m "$STATS_MODULE" "$LOGDIR" --ini-year $(($INI_YEAR+$ZERO_YEAR)) --end-year $(($END_YEAR+$ZERO_YEAR))
 EOF
+
+ND_OPTIONS="--year \"\$this_year\" --config \"$CONFIG_FILE\" --logdir \"$LOGDIR\" --num-procs \"$NUM_PROCS\""
+if [ -n "${METEO_YEAR:-}" ]; then
+  echo "Using meteo_year $METEO_YEAR for ND computation"
+  ND_OPTIONS="$ND_OPTIONS --meteo-year \"$METEO_YEAR\""
+fi
+if [ -n "${STATS_FILE:-}" ]; then
+  echo "Using stats file $STATS_FILE for ND computation"
+  ND_OPTIONS="$ND_OPTIONS --stats-file \"$STATS_FILE\""
+fi
+if [ "$NDTT_REQUIRED" = true ]; then
+  echo "Saving computed Nd for all times"
+  ND_OPTIONS="$ND_OPTIONS --save-alltimes"
+fi
+
 cat << EOF > "$WRAPPER_ND"
 #!/bin/bash
 set -euo pipefail
@@ -220,14 +261,14 @@ then
 fi
 this_year=\$((\$this_year+$ZERO_YEAR))
 echo "This year is \$this_year"
-$PYTHON_EXEC -m "$ND_MODULE" --year \$this_year --config "$CONFIG_FILE" --logdir "$LOGDIR" --num-procs "$NUM_PROCS"
+$PYTHON_EXEC -m "$ND_MODULE" $ND_OPTIONS
 EOF
 
 if [ "$TUNE_SWITCH" = true ]; then
   echo "Tuning nd..."
   if command -v sbatch &> /dev/null; then
     # --wait not always supported
-    jobid=$(sbatch --parsable --array="${INI_YEAR}-${END_YEAR}%20" --wait\
+    jobid=$(sbatch --parsable --array="${INI_YEAR}-${END_YEAR}%${ARRAY_CHUNK_SIZE}" --wait\
            -t 06:00:00 -c $NUM_CPUS \
            --chdir="$TMP_DIRECTORY" \
            --mem="${JOBMEM_GB}GB" \
@@ -266,7 +307,7 @@ fi
 if [ "$STATS_SWITCH" = true ]; then
   echo "Computing stats..."
   if command -v sbatch &> /dev/null; then
-    jobid=$(sbatch --parsable --wait -t 00:05:00 \
+    jobid=$(sbatch --parsable --wait -t 00:10:00 \
                    -c 4 --chdir="$TMP_DIRECTORY"\
                    --mem="4GB" --output="${LOGDIR}/tune_stats_output.txt" \
                    --error="${LOGDIR}/tune_stats_output.txt" \
@@ -294,14 +335,19 @@ echo "Skipping stats!"
 fi
 
 if [ "$ND_SWITCH" = true ]; then
+  if [ -n "${METEO_YEAR:-}" ]; then
+    METEOYEARLABEL="meteo${METEO_YEAR}_"
+  else
+    METEOYEARLABEL=""
+  fi
   if command -v sbatch &> /dev/null; then
-    echo "Computing tuned nd for all years..."
-    jobid=$(sbatch --parsable --array="${INI_YEAR}-${END_YEAR}%20" --wait \
+    echo "Computing tuned nd for all $(($END_YEAR-$INI_YEAR+1)) years..."
+    jobid=$(sbatch --parsable --array="${INI_YEAR}-${END_YEAR}%${ARRAY_CHUNK_SIZE}" --wait \
            -t 01:00:00 -c $NUM_CPUS \
            --chdir="$TMP_DIRECTORY" \
            --mem="${JOBMEM_GB}GB" \
-           --output="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_output.txt" \
-           --error="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_output.txt" \
+           --output="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_${METEOYEARLABEL}output.txt" \
+           --error="${LOGDIR}/compute_nd_${ZERO_YEAR}+%a_${METEOYEARLABEL}output.txt" \
            "$WRAPPER_ND")
     # Check whether jobs failed
     nd_job_name=${WRAPPER_ND##*/}

@@ -73,10 +73,10 @@ def copy_all_files(year, copy_modis_nd = True, meteo_year = None) -> None:
 
         aero_pl_filelist = glob(aero_pl_filename)
         if not aero_pl_filelist:
-            raise ValueError(f"No files found with {aero_pl_filename}")
+            raise FileNotFoundError(f"No files found with {aero_pl_filename}")
         #aero_sfc_filelist = glob.glob(aero_sfc_name)
         #if len(aero_sfc_filelist):
-        #    raise ValueError(f"No files found with {aero_sfc_name}")
+        #    raise FileNotFoundError(f"No files found with {aero_sfc_name}")
 
         aero_pl_filename = aero_pl_filelist[0]
        # aero_sfc_name = aero_sfc_filelist[0]
@@ -106,7 +106,7 @@ def copy_all_files(year, copy_modis_nd = True, meteo_year = None) -> None:
 
     for file_check in [era5_ml_file, era5_sfc_file]:
         if not os.path.exists(file_check):
-            raise ValueError(f"{file_check} does not exist!")
+            raise FileNotFoundError(f"{file_check} does not exist!")
 
     cmd1 = f"{cpy_cmd} '{era5_ml_file}' '{TMPFLDDIR}'/"
     print(cmd1)
@@ -129,7 +129,7 @@ def copy_all_files(year, copy_modis_nd = True, meteo_year = None) -> None:
         f"modis_nd_nd13.monthlymeans_{year:4d}.AT.v1_{CONFIGDICT['gridspec']}.nc"
         )
     if not os.path.exists(modis_nd_file):
-        raise ValueError(f"{modis_nd_file} does not exist")
+        raise FileNotFoundError(f"{modis_nd_file} does not exist")
 
     cmd1 = f"{cpy_cmd} '{modis_nd_file}' '{TMPFLDDIR}'/"
     print(cmd1)

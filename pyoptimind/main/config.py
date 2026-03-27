@@ -31,11 +31,13 @@ os.makedirs(TMPFLDDIR, exist_ok=True)
 # Global configuration dictionary (defaults)
 # ---------------------------------------------------------------------
 CONFIGDICT: Dict[str, Any] = {
-    "gridspec": "r30",
+    "gridspec": "r90",
     "latitudes_minmax": [-90, 90],
-    "longitudes_minmax": [0, 360],
+    "longitudes_westeast": [0, 360],
     "cos_sza_minmax": [0, 1],
+    "cos_sza_minmax_nd": None, # Set this to override cos_sza_minmax for compute_nd task
     "localhour_minmax": [0, 24],
+    "localhour_minmax_nd": None, # Set this to override localhour_minmax for compute_nd task
     "hourly": "3hourly",
     "aerofromclimatology": False,
     "fixedaeromodellevel": None,  # 135 or 129 or None
@@ -53,9 +55,11 @@ CONFIGDICT: Dict[str, Any] = {
     "wspeed_type": 3,
     "w_prime": None,  # float for wspeed_type 1 and 2
     "w_prime_min": 0.1,
-    "w_mean_min": -10,
+    "w_prime_max": 5,
+    "w_mean_min": -0.5,
+    "w_mean_max": 0.5,
     "wspeed": None,  # for gen 0, fixed monodisperse vertical speed
-    "deardorff_scale": 0.4,
+    "deardorff_scale": 0.6, # for wspeed_type 3 and 4
     "kinetically_limited": False,
     "scalemcon": False,  # Makes sense only for prognostic aerosols
     "scale_recipe_ingredient": None,
@@ -69,11 +73,11 @@ CONFIGDICT: Dict[str, Any] = {
     "modisndvalidthr": 0.01,
     "samplespreads": ["Q06", "G18", "BR17"],
     "modisndbiascorrection": False,
-    "cldetect_cc_threshold": 0.8,
-    "cldetect_hcc_threshold": 1.0,
+    "cldetect_cc_threshold": 0.1,
+    "cldetect_hcc_threshold": 0.99,
     "cldetect_t_threshold": 268,
     "cldetect_iwr_threshold": 0.05,
-    "cldetect_thresh_valid_monthly": 0.1,
+    "cldetect_thresh_valid_monthly": 0.05,
     "useverheggenactivfrac": False,
     "tune_rain_dispersion": False,
     "weightbycloudpresence": False,
@@ -163,11 +167,25 @@ def digest_config(config_path: str) -> None:
 
     # Deardorff scale vs wspeed
     if CONFIGDICT["deardorff_scale"] is not None and CONFIGDICT["wspeed"] is not None:
-        print(
-            f"Warning! Setting deardorff_scale={CONFIGDICT['deardorff_scale']:.2f} "
-            f"overrides wspeed={CONFIGDICT['wspeed']}."
-        )
-        CONFIGDICT["wspeed"] = None
+        if CONFIGDICT["wspeed_type"] in [3, 4]:
+            print(
+                f"Warning! Setting deardorff_scale={CONFIGDICT['deardorff_scale']:.2f} "
+                f"overrides wspeed={CONFIGDICT['wspeed']}."
+            )
+            CONFIGDICT["wspeed"] = None
+        elif CONFIGDICT["wspeed_type"] in [1, 2]:
+            print(
+                "Warning! Ignoring deardorff_scale and wspeed because "+\
+                f"wspeed_type={CONFIGDICT['wspeed_type']} "
+            )
+            CONFIGDICT["deardorff_scale"] = None
+            CONFIGDICT["wspeed"] = None
+        else:
+            print(
+                f"Warning! Ignoring deardorff_scale because wspeed_type={CONFIGDICT['wspeed_type']}"
+                )
+            CONFIGDICT["deardorff_scale"] = None
+
 
     if CONFIGDICT["aerofromclimatology"]:
         if not os.path.exists(CONFIGDICT["aerosolclimfile"]):

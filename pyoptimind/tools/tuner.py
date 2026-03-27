@@ -11,7 +11,7 @@ from scipy.optimize import minimize
 from ..main import config
 from ..main.config import CONFIGDICT
 from .aerosol import get_nccn_over_mcon_from_speclist
-from .lut import compute_nd, get_lutaero_from_r0
+from .lut import compute_nd, get_lutaero_from_r0, _select_include_w_list
 from .stack import get_stacked_aero, get_stacked_lut
 
 
@@ -131,6 +131,7 @@ def nd_err_func(
             for var in prior_mass_fr:
                 mcon_scaler_fields[var] = val_out[f"{var}_mass_scaler"].squeeze()
 
+    # Error function is evaluated on monthly means
     err = compute_err_func(nd13_data, modis_nd13, modis_errors, monthly_weights)
     print(".", end="", flush=True)
 
@@ -180,14 +181,7 @@ def tuning_loop(  # pylint: disable=too-many-arguments, too-many-locals
         raise ValueError("variable w_prime required in this_ccn_mcon " +\
                          f"if using wspeed_type {wspeed_type}")
 
-    if wspeed_type == 0:
-        include_w_list = ["w"]
-    elif wspeed_type in [1, 2]:
-        include_w_list = ["w_mean"]
-    elif wspeed_type in [3, 4]:
-        include_w_list = ["w_mean", "w_prime"]
-    else:
-        raise ValueError(f"wspeed_type {wspeed_type} not supported. Only values 0..4 supported.")
+    include_w_list = _select_include_w_list(wspeed_type)
 
     ccn_mcon_stack = get_stacked_aero(this_ccn_mcon, config.THISLUTAERO, include_w=include_w_list)
     if tune_rain_dispersion:

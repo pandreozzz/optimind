@@ -16,6 +16,7 @@ def convert_to_zarr(
     dirname_out: Optional[str] = None,
     *,
     open_chunks: str | dict | None = "auto",
+    out_chunks: Optional[dict] = None,
     no_lev_chunk: bool = True,
     lev_dim: str = "lev",
     overwrite: bool = False,
@@ -39,6 +40,8 @@ def convert_to_zarr(
     print(f"converting {fname_in} to {dirname_out}...", flush=True)
 
     ds = xr.open_dataset(fname_in, chunks=open_chunks)
+    if out_chunks:
+        ds = ds.chunk(out_chunks)
     if no_lev_chunk and lev_dim in ds.dims:
         ds = ds.chunk({lev_dim: -1})
 
@@ -57,6 +60,11 @@ def _parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         choices=["auto", "stored", "none"],
         help="Chunking at open: auto, stored ({}), or none",
     )
+    parser.add_argument(
+        "--chunks",
+        default=None,
+        help='Output chunks, e.g. "time=24,lat=64,lon=64"',
+    )
     parser.add_argument("--no-lev-chunk", action="store_true", help="Store lev as one chunk")
     parser.add_argument("--lev-dim", default="lev", help="Vertical dimension name")
     parser.add_argument("--overwrite", action="store_true", help="Overwrite output")
@@ -71,6 +79,16 @@ def _resolve_open_chunks(choice: str) -> str | dict | None:
     return mapping[choice]
 
 
+def _parse_chunks(arg: Optional[str]) -> Optional[dict]:
+    if not arg:
+        return None
+    chunks: dict[str, int] = {}
+    for item in arg.split(","):
+        key, val = item.split("=", 1)
+        chunks[key.strip()] = int(val)
+    return chunks
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """CLI entrypoint."""
     args = _parse_args(argv)
@@ -78,6 +96,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         fname_in=args.input,
         dirname_out=args.output,
         open_chunks=_resolve_open_chunks(args.open_chunks),
+        out_chunks=_parse_chunks(args.chunks),
         no_lev_chunk=args.no_lev_chunk,
         lev_dim=args.lev_dim,
         overwrite=args.overwrite,

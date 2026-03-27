@@ -15,6 +15,15 @@ from .aerosol import IFSAeroSpecs
 from .stack import StackAeroTuple, StackLutTuple
 
 
+
+def _select_include_w_list(wspeed_type: int) -> List[str]:
+    """Return the list of w variables to include based on wspeed_type."""
+    if wspeed_type == 0:
+        return []
+    if wspeed_type < 3:
+        return ["w_mean"]
+    return ["w_mean", "w_prime"]
+
 def get_lutaero_from_r0(
     r0: Dict[str, float],
     lut_aero: List[Any],

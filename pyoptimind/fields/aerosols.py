@@ -24,31 +24,29 @@ AERORENAMEDIC = {
     "aermr20" : "Anthropogenic_Secondary_Organic"
 }
 
-def get_aero_fields(year, timesel = None, latmin = None, latmax = None) -> xr.Dataset:
+def get_aero_fields(year, timesel = None,
+                    latmin : float = -90, latmax : float = 90,
+                    lonwest : float = 0, loneast : float = 360) -> xr.Dataset:
     """
     Load aerosol mass concentration fields with optimizations for large zarr archives.
-    
+
     Automatically handles both
     netcdf4 and zarr formats based on configuration.
-    
+
     Args:
         year: int - Year of data to load
         timesel: slice or array - Time selection (pandas-compatible)
         latmin: float - Minimum latitude (default: from CONFIGDICT)
         latmax: float - Maximum latitude (default: from CONFIGDICT)
-    
+
     Returns:
         xr.Dataset: Aerosol pressure-level and surface fields for specified domain/time
-    
+
     Note:
         Uses lazy evaluation and early spatial selection before chunking to
         reduce memory requirements for large datasets.
     """
-    if latmin is None:
-        latmin = min(CONFIGDICT["latitudes_minmax"])
-    if latmax is None:
-        latmax = max(CONFIGDICT["latitudes_minmax"])
- 
+
     opends_kwargs = OPENDS_ZARR_KWARGS if CONFIGDICT["use_zarr"] else {"engine": "netcdf4"}
     dataext = "_zarr" if CONFIGDICT["use_zarr"] else ".nc"
 
@@ -81,9 +79,24 @@ def get_aero_fields(year, timesel = None, latmin = None, latmax = None) -> xr.Da
         lev=xr.DataArray(data=np.arange(1,len(this_prog["plev"])+1), dims=["plev"])
     ).swap_dims(plev="lev").transpose(..., "lat", "lon").sortby("lat", ascending=False)
 
+
     latslice = slice(latmax,latmin)
 
-    this_prog = this_prog.sel(lat=latslice)
+    # Load lon coordinate eagerly (tiny) to keep selection graph small.
+    all_lons = this_prog["lon"].load()
+    if lonwest < loneast:
+        lonsel = all_lons.sel(lon=slice(lonwest, loneast))
+    else:
+        lonsel = xr.concat(
+            [
+                all_lons.where(all_lons >= lonwest, drop=True),
+                all_lons.where(all_lons <= loneast, drop=True),
+            ],
+            dim="lon",
+        )
+
+    this_prog = this_prog.transpose(..., "lat", "lon").sortby(
+        "lat", ascending=False).sel(lat=latslice, lon=lonsel)
 
     tmp_plev = this_prog["plev"]
     this_prog = this_prog.drop_vars("plev")
@@ -93,27 +106,41 @@ def get_aero_fields(year, timesel = None, latmin = None, latmax = None) -> xr.Da
 
     return this_prog
 
-def get_aero_fromclim(year, latmin = None, latmax = None) -> xr.Dataset:
+def get_aero_fromclim(year, latmin : float = -90, latmax : float = 90,
+                      lonwest : float = 0, loneast : float = 360) -> xr.Dataset:
     """
-    Load aerosol mass concentration fields from climatology. 
+    Load aerosol mass concentration fields from climatology.
     Args:
         year: int - Year of data to load
         timesel: slice or array - Time selection (pandas-compatible)
         latmin: float - Minimum latitude (default: from CONFIGDICT)
         latmax: float - Maximum latitude (default: from CONFIGDICT)
-    
+
     Returns:
         xr.Dataset: Aerosol pressure-level and surface fields for specified domain/time
-    
+
     """
-    if latmin is None:
-        latmin = min(CONFIGDICT["latitudes_minmax"])
-    if latmax is None:
-        latmax = max(CONFIGDICT["latitudes_minmax"])
 
     clim_dset = xr.open_dataset(f"{os.environ['TMPDIR']}/fields/aerosol_cams_climatology.nc").transpose(..., "lat", "lon").sortby("lat", ascending=False)
 
-    clim_dset = clim_dset.sel(lat=slice(latmax,latmin))
+    latslice = slice(latmax,latmin)
+
+    # Load lon coordinate eagerly (tiny) to keep selection graph small.
+    all_lons = clim_dset["lon"].load()
+    if lonwest < loneast:
+        lonsel = all_lons.sel(lon=slice(lonwest, loneast))
+    # Is lon 0 within selection
+    else:
+        lonsel = xr.concat(
+            [
+                all_lons.where(all_lons >= lonwest, drop=True),
+                all_lons.where(all_lons <= loneast, drop=True),
+            ],
+            dim="lon",
+        )
+
+    clim_dset = clim_dset.transpose(..., "lat", "lon").sortby(
+        "lat", ascending=False).sel(lat=latslice, lon=lonsel)
 
     if "pressure" not in clim_dset:
         raise ValueError("Climatology file does not contain mandatory field pressure!")

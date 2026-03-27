@@ -4,7 +4,7 @@ import argparse
 import glob
 import os
 import pickle
-from typing import Any, Dict, List
+from typing import Optional, Any, Dict, List
 
 import numpy as np
 import xarray as xr
@@ -18,8 +18,9 @@ from ..fields.clouds import get_meteo_cloudy_slices
 from ..fields.stage import copy_all_files
 from ..lut.setup import get_actual_lut_recipes, setup_pyrcel_lut
 from ..tools.aerinterp import get_interpolated_ccn, interpolate_aero
-from ..tools.lut import compute_nd
+from ..tools.lut import compute_nd, _select_include_w_list
 from ..tools.stack import get_stacked_aero, get_stacked_lut
+from ..tools.aerosol import compute_ccn_ifs
 
 from ..utils.memory import get_available_memory
 from ..utils.daskctrl import optimize_dask_for_memory
@@ -58,37 +59,47 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to output/log directory"
         )
     parser.add_argument(
+        "--stats-file",
+        type=str,
+        default=None,
+        help="Path to stats file instead of fetching latest from logdir"
+        )
+    parser.add_argument(
         "--num-procs",
         type=int,
         default=4,
         help="Number of workers for the Dask local cluster")
+    parser.add_argument(
+        "--save-alltimes",
+        action="store_true",
+        default=False,
+        help="Whether to save nd for all times in addition to monthly means")
     return parser
 
 
-def _load_latest_tune_stats(logdir: str) -> Dict[str, Any]:
-    """Load the most recent tuning stats pickle from a directory."""
-    tune_stats_files = glob.glob(os.path.join(logdir, "tune_stats_*.pkl"))
-    if len(tune_stats_files) < 1:
-        raise ValueError(f"Could not find any tune stats under {logdir}!!")
-    tune_stats_files.sort()
-    print(f"Fetching tune stats from {tune_stats_files[-1]}")
-    with open(tune_stats_files[-1], "rb") as fopen:
+def _load_latest_tune_stats(logdir: str, statsfile: Optional[str] = None) -> Dict[str, Any]:
+    """Load the most recent tuning stats pickle from a directory or file if specified."""
+
+    if statsfile is None:
+        tune_stats_files = glob.glob(os.path.join(logdir, "tune_stats_*.pkl"))
+        if len(tune_stats_files) < 1:
+            raise ValueError(f"Could not find any tune stats under {logdir}!!")
+        tune_stats_files.sort()
+        this_statsfile = tune_stats_files[-1]
+    else:
+        this_statsfile = statsfile
+
+    this_statsfile = os.path.realpath(this_statsfile)
+    print(f"Fetching tune stats from {this_statsfile}...")
+    with open(this_statsfile, "rb") as fopen:
         return pickle.load(fopen)
 
 
-def _select_include_w_list(wspeed_type: int) -> List[str]:
-    """Return the list of w variables to include based on wspeed_type."""
-    if wspeed_type == 0:
-        return ["w"]
-    if wspeed_type < 3:
-        return ["w_mean"]
-    return ["w_mean", "w_prime"]
-
-
-def _save_results(ds: xr.Dataset, outdir: str, year: int) -> None:
+def _save_results(ds: xr.Dataset, outdir: str, year: int, meteo_year = None) -> None:
     """Persist results to either Zarr or NetCDF based on config."""
     outext = "_zarr" if CONFIGDICT["use_zarr"] else ".nc"
-    results_file = os.path.join(outdir, f"tuned_nd_{year}{outext}")
+    filename = f"tuned_nd_{year}" if meteo_year is None else f"tuned_nd_{year}_meteo{meteo_year}"
+    results_file = os.path.join(outdir, f"{filename}{outext}")
     print(f"Saving results to {results_file}...")
     if os.path.exists(results_file):
         backup_dest = f"{results_file}_BACKUP"
@@ -99,15 +110,26 @@ def _save_results(ds: xr.Dataset, outdir: str, year: int) -> None:
     else:
         ds.to_netcdf(results_file)
 
-def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
+def run_compute_nd_year(year, logdir : str, statsfile : Optional[str] = None,
+                        meteo_year : Optional[int] = None,
+                        save_alltimes : Optional[bool] = False) -> None:
     """"Fetch tuning stats and compute nd for the year"""
     # Stage I/O
-    copy_all_files(year, meteo_year=meteo_year)
+    copy_all_files(year, copy_modis_nd=False, meteo_year=meteo_year)
 
-    tune_stats = _load_latest_tune_stats(logdir)
+    tune_stats = _load_latest_tune_stats(logdir=logdir, statsfile=statsfile)
+
+    if save_alltimes:
+        print("Will save nd for alltimes", flush=True)
 
     # Meteorology (cloudy slices)
     print("Getting era5 cloudy points...", flush=True)
+    cos_sza_minmax = CONFIGDICT["cos_sza_minmax_nd"] or CONFIGDICT["cos_sza_minmax"]
+    localhour_minmax = CONFIGDICT["localhour_minmax_nd"] or CONFIGDICT["localhour_minmax"]
+
+    print(f"cos_sza_minmax: {cos_sza_minmax}", flush=True)
+    print(f"Localhour minmax: {localhour_minmax}", flush=True)
+
     this_ifs, this_ifs_fixedlevel = get_meteo_cloudy_slices(
         meteo_year if meteo_year is not None else year,
         cc_thresh=CONFIGDICT["cldetect_cc_threshold"],
@@ -119,8 +141,8 @@ def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
         min_top_tau_c=tune_stats["min_top_tau_c"],
         use_grosvenor_tau_c=CONFIGDICT["grosvenor_tau_c_correction"],
         thresh_valid_monthly=CONFIGDICT["cldetect_thresh_valid_monthly"],
-        latmin=-90,
-        latmax=90,
+        latmin=-90, latmax=90, lonwest=0, loneast=360,
+        cos_sza_minmax=cos_sza_minmax, localhour_minmax=localhour_minmax
     )
 
     # Change year in time dimension for this_ifs, this_ifs_fixedlevel
@@ -146,9 +168,9 @@ def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
 
     # Aerosols (either from climatology or online fields)
     if CONFIGDICT["aerofromclimatology"]:
-        this_aero = get_aero_fromclim(year=year, latmin=-90, latmax=90)
+        this_aero = get_aero_fromclim(year=year, latmin=-90, latmax=90, lonwest=0, loneast=360)
     else:
-        this_aero = get_aero_fields(year, timesel=this_ifs.time.values, latmin=-90, latmax=90)
+        this_aero = get_aero_fields(year, timesel=this_ifs.time.values, latmin=-90, latmax=90, lonwest=0, loneast=360)
 
     # LUT setup / selection
     setup_pyrcel_lut(CONFIGDICT["pyrcellutpath"])
@@ -208,6 +230,18 @@ def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
         ).mean()
     print("done!", flush=True)
 
+    print("Computing ifs nd...", flush=True)
+    this_ifs_nd = compute_ccn_ifs(
+        ws=xr.DataArray(np.sqrt(this_ifs["10u"] ** 2 + this_ifs["10v"] ** 2)),
+        lsm=this_ifs["lsm"],
+    )
+    this_ifs_nd13_mm = (this_ifs_nd**(0.333)).groupby(this_ifs_nd.time.dt.month).mean()
+    this_ifs_nd_mm = this_ifs_nd.groupby(this_ifs_nd.time.dt.month).mean()
+    if not save_alltimes:
+        del this_ifs_nd
+        this_ifs_nd = None
+    print("Done", flush=True)
+
     include_w_list = _select_include_w_list(CONFIGDICT["wspeed_type"])
     this_months = this_ifs.time.dt.month
 
@@ -260,6 +294,9 @@ def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
                     f"{stat_typ}{ccn_descr}tot_nd": this_activ_results["tot_nd"].groupby(this_months).mean(),
                     f"{stat_typ}{ccn_descr}tot_nd13": (this_activ_results["tot_nd"] ** 0.333).groupby(this_months).mean(),
                 },
+                **{
+                    f"{stat_typ}{ccn_descr}tot_nd_allt": this_activ_results["tot_nd"] if save_alltimes else None
+                }
             }
 
     print("Gathering all results...", flush=True)
@@ -267,6 +304,9 @@ def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
     activ_results = {
         **activ_results,
         **{
+            "ifs_nd" : this_ifs_nd_mm,
+            "ifs_nd13" :this_ifs_nd13_mm,
+            "ifs_nd_alltimes" : this_ifs_nd,
             "cloud_top_p": this_ifs["p"].groupby(this_months).mean(),
             "fixed_lev_p": (
                 this_ifs_fixedlevel["p"].groupby(this_months).mean() if this_ifs_fixedlevel is not None else None
@@ -284,7 +324,6 @@ def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
             "wspeed": CONFIGDICT["wspeed"],
             "deardorff_scale": CONFIGDICT["deardorff_scale"],
             "w_mean_min": CONFIGDICT["w_mean_min"],
-            "w_prime": CONFIGDICT["w_prime_min"],
             "w_prime_min": CONFIGDICT["w_prime_min"],
         },
         **{
@@ -312,7 +351,7 @@ def run_compute_nd_year(year, logdir, meteo_year = None) -> None:
     }
 
     activ_results_ds = xr.Dataset(data_vars=activ_results).expand_dims(year=[year])
-    _save_results(activ_results_ds, logdir, year)
+    _save_results(ds=activ_results_ds, outdir=logdir, year=year, meteo_year=meteo_year)
 
 def main() -> int:
     """CLI entrypoint to compute Nd fields given tuning stats."""
@@ -330,7 +369,9 @@ def main() -> int:
         mem_per_worker_mb = max(totmem_mbytes * 0.98 / max(args.num_procs, 1), 256.0)
 
         with Client(n_workers=args.num_procs, memory_limit=f"{mem_per_worker_mb:.2f}MB"):
-            run_compute_nd_year(args.year, args.logdir, meteo_year=args.meteo_year)
+            run_compute_nd_year(year=args.year,
+                                logdir=args.logdir, statsfile=args.stats_file,
+                                meteo_year=args.meteo_year, save_alltimes=args.save_alltimes)
 
     return 0
 

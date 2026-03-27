@@ -6,8 +6,8 @@ import xarray as xr
 from ..main.config import CONFIGDICT, TMPFLDDIR
 
 def get_modis_data(year,
-                   latmin = min(CONFIGDICT["latitudes_minmax"]),
-                   latmax = max(CONFIGDICT["latitudes_minmax"])) -> xr.Dataset:
+                   latmin : float = -90, latmax : float = 90,
+                   lonwest : float = 0, loneast : float = 360) -> xr.Dataset:
     """
     Fetch modis data
     """
@@ -21,6 +21,22 @@ def get_modis_data(year,
     ).transpose(..., "lat", "lon").sortby("lat", ascending=False)
 
     latslice = slice(latmax,latmin)
+
+    # Load lon coordinate eagerly (tiny) to keep selection graph small.
+    all_lons = modis_nd13["lon"].load()
+    if lonwest < loneast:
+        lonsel = all_lons.sel(lon=slice(lonwest, loneast))
+    else:
+        lonsel = xr.concat(
+            [
+                all_lons.where(all_lons >= lonwest, drop=True),
+                all_lons.where(all_lons <= loneast, drop=True),
+            ],
+            dim="lon",
+        )
+
+    modis_nd13 = modis_nd13.sel(lat=latslice, lon=lonsel)
+
     modis_nd13_data = {}
     for sample in samples:
         biascorr = "_bcorr" if CONFIGDICT["modisndbiascorrection"] else ""
