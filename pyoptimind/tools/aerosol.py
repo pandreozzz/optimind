@@ -117,7 +117,7 @@ class IFSAeroSpecs:
     density: float = 1.0
     rmin: float = 0.0
     rmax: float = float(np.inf)
-    fact: np.ndarray = field(default_factory=lambda: np.array(np.nan))
+    fact: np.ndarray = field(default_factory=lambda: np.array(1))
     m_act: float = 0.0
     nmodes: int = 1
 
