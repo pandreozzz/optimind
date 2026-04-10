@@ -30,7 +30,7 @@ os.makedirs(TMPFLDDIR, exist_ok=True)
 # ---------------------------------------------------------------------
 # Global configuration dictionary (defaults)
 # ---------------------------------------------------------------------
-CONFIGDICT: Dict[str, Any] = {
+CONFIGDICT_DEF: Dict[str, Any] = {
     "gridspec": "r90",
     "latitudes_minmax": [-90, 90],
     "longitudes_westeast": [0, 360],
@@ -88,6 +88,9 @@ CONFIGDICT: Dict[str, Any] = {
     "use_zarr": True,
 }
 
+
+CONFIGDICT: Dict[Str, Any] = {}
+
 # Global state variables (kept for compatibility with existing code)
 SOME_AEROS_OUT_OF_CLOUD = False
 PYRCELLUT = xr.Dataset(None)
@@ -102,7 +105,7 @@ ERA5TENDFILESIGN = "tend_ml"
 ERA5SFCFILESIGN = "sfc"
 COPYFIELDS = False
 
-# IO defaults  - use chunking of zarr 
+# IO defaults  - use chunking of zarr
 OPENDS_ZARR_KWARGS: Dict[str, Any] = {
     "engine": "zarr",
     "chunks": {},
@@ -110,6 +113,11 @@ OPENDS_ZARR_KWARGS: Dict[str, Any] = {
 }
 SSRH80 = True
 
+def clear_config() -> None:
+    """
+    Clears configuration. Further usage needs a new call to digest_config.
+    """
+    CONFIGDICT = {}
 
 def digest_config(config_path: str) -> None:
     """
@@ -131,22 +139,22 @@ def digest_config(config_path: str) -> None:
 
     # Validate keys: anything not in defaults (and not prefixed with "other_") is an error
     for key in cfg_in:
-        if not key.startswith("other_") and key not in CONFIGDICT:
+        if not key.startswith("other_") and key not in CONFIGDICT_DEF:
             raise ValueError(
                 f"config key {key} unknown. Verify spelling errors."
             )
 
     # Merge (excluding "other_*" keys which are ignored by design)
-    for key, val in cfg_in.items():
+    # and log CONFIGDICT population
+    for key, val in CONFIGDICT_DEF.items():
         if key.startswith("other_"):
             continue
-        CONFIGDICT[key] = val
-        print(f"Set {key:>20} to {CONFIGDICT[key]}")
-
-    # Print defaults for keys not present in input
-    for key, val in CONFIGDICT.items():
-        if key not in cfg_in and not key.startswith("other_"):
+        if key in cfg_in:
+            CONFIGDICT[key] = cfg_in[key]
+            print(f"Set {key:>20} to {CONFIGDICT[key]}")
+        else:
             print(f"Using default value for {key}: {val}")
+            CONFIGDICT[key] = val
 
     # Cross-field consistency
     if (
